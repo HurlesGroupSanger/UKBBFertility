@@ -1,3 +1,14 @@
+# Nothing from our testing folder:
+rawdata_test/
+rawdata.testing.tar.gz
+rawdata_real/
+
+# or an individuals unpacked rawdata folder:
+rawdata/
+
+# Nothing from figures:
+figures/
+
 # History files
 .Rhistory
 .Rapp.history
@@ -10,9 +21,6 @@
 
 # Example code in package build process
 *-Ex.R
-
-# Output files from R CMD build
-/*.tar.gz
 
 # Output files from R CMD check
 /*.Rcheck/

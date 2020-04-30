@@ -1,0 +1,239 @@
+---
+title: "SNVCalling_Filtering"
+author: "Eugene Gardner"
+date: "29/04/2020"
+output: html_document
+---
+
+This Markdown documents the annotation and extraction of SNV and InDel variants from UKBB FE WES files. This annotation uses a custom java pipeline, of which the precompiled jar is included at `scripts/SNVCounter.jar`. The source code and Eclipse project for this pipeline is available in `src/SNVCounter/`.
+
+# 1. Required Exome Variant Files
+
+First step to analyse UK Biobank WES data is to actually acquire the variant files themselves.
+
+# 2. Generating Annotations Sources
+
+This process is slightly complicated because of the possible sources of data that I am accounting for in other projects. I have provided here a simplified version of this annotation for Hg38 UK Biobank data.
+
+*Note:* All annotations below are done *without* the "chr" prefix!
+
+For each of the below annotations I need to generate GRCh38 versions. Annotations are stored in the root folder `annotations/hg38` with the corresponding name in brackets below:
+
+* CADD scores [cadd]
+** We also have to generate CADD scores for variants not included in their default build 
+** mostly limited to InDels.
+* gnomAD allele frequencies [gnomad] -- Note that I am using AF_nfe, which is non-Finnish European AF (I used to use AF_POPMAX but this doesn't exist anymore in b38 of gnomad (?))
+* MPC scores [mpc]
+** Have to lift this over the hg38
+* PEXT scores [pext]
+** Have to lift this over the hg38
+
+I also need to generate annotations for each VCF as variant loci/values will not be identical. These annotations are stored alongside the vcf file, with a changed suffix like:
+
+* VEP annotations
+* VQSR annotations
+** For the purposes of UKBB this amounts to a 'fake' list of VQSR values for each variant that 
+* Supplemental CADD annotations
+
+For VEP, I am using my own local build of v97, located (natively) in `/lustre/scratch115/teams/hurles/users/eg15/INTERVAL/snv_cognition/ensembl-vep/` and sym-linked to `$HOME/EugeneTools/`. I independently downloaded cache files for both genome builds. The most complicated part was building loftee for GRCh38 which is located in `.vep/Plugins/loftee_hg38/` (hg19 was not an issue other than the note on the GERP db below, and is located at `.vep/Plugs/loftee_hg19/`). Each genome build has a separate folder in this directory for necessary files:
+
+1. Pull the grch38 version of Konrad's git repo: [loftee](https://github.com/konradjk/loftee)
+2. Download each of the required files for hg19 [loftee hg19 ftp](https://personal.broadinstitute.org/konradk/loftee_data/GRCh37/`) / hg38 [loftee hg38 ftp](`https://personal.broadinstitute.org/konradk/loftee_data/GRCh38/)
+** human ancestor
+** sql database
+** GERP database -- *Note:* this is *not* listed as necessary for hg19 in the main README. This is incorrect and is noted in [this issue](https://github.com/konradjk/loftee/issues/50)
+3. For loftee Hg38 to run, it needs additional perl packages, most of which I installed easily via cpan (not going to list here). The only one that was an issue was Bio::DB::BigWig, which has a whole custom setup to follow. I fixed this by installing an older version of the "Kent" UCSC repo [v334](https://github.com/ucscGenomeBrowser/kent/tree/v334_branch) as referenced in [this issue](https://github.com/GMOD/GBrowse-Adaptors/issues/17). This also requires you to edit to edit a file when installing kent as noted in the same issue.
+
+All of the basic annotation is being done in the folder `$INT/snv_cognition`. As noted above, per-vcf annotations are located in `./vcfs/ Actual combination of information being performed by a java pipeline (which has some additional, minor, documentation annotated within it) located at `/Users/eg15/Documents/workspace/SNVCounter/`.
+
+### CADD
+
+```{bash Obtain CADD Annotations, eval = F}
+
+## Download libraries of pre-determined CADD scores
+# Hg19
+bsub -q normal -M 1000 -o dl.out 'wget http://krishna.gs.washington.edu/download/CADD/v1.4/GRCh37/whole_genome_SNVs.tsv.gz'
+bsub -q normal -M 1000 -o dl.out 'wget http://krishna.gs.washington.edu/download/CADD/v1.4/GRCh37/whole_genome_SNVs.tsv.gz.tbi'
+
+# Hg38
+bsub -q normal -M 1000 -o dl.out 'wget http://krishna.gs.washington.edu/download/CADD/v1.5/GRCh38/whole_genome_SNVs.tsv.gz'
+bsub -q normal -M 1000 -o dl.out 'wget http://krishna.gs.washington.edu/download/CADD/v1.5/GRCh38/whole_genome_SNVs.tsv.gz.tbi'
+
+## Have to annotate all indels for CADD independently:
+# INTERVAL WES
+zcat ../INTERVAL_QCv1.0.vqsr/VQSR.tsv.gz | perl -ane 'chomp $_; if (length($F[2]) > 1 || length($F[3]) > 1) {print "$F[0]\t$F[1]\t.\t$F[2]\t$F[3]\n";}' > to_annotate.vcf
+split -a 4 -l 349 -d --numeric-suffixes=1 to_annotate.vcf to_annotate.
+perl -e 'for (1..999) {$x = sprintf("%04d", $_); print "mv to_annotate.$x to_annotate.$x.vcf;\n";}' | bash
+mkdir gridout/
+conda activate cadd-env
+bsub -q normal -M 3000 -o gridout/CADD.%I.%J -J 'CADD[1-1000]' './run_cadd.pl'
+perl -e '@F; for (1..999) {$x = sprintf("%04d",$_); push(@F, "to_annotate.$x.tsv.gz");} print "zcat " . join("\t", @F) . "\n";' | bash | grep -v "#" > cadd.tsv
+sort -k 1,1 -k2,2n cadd.tsv > cadd.sorted.tsv
+mv cadd.sorted.tsv cadd.tsv 
+bgzip cadd.tsv
+tabix -s 1 -b 2 -e 2 cadd.tsv.gz
+
+# INTERVAL WGS
+zcat ../15x_exome.GATK4.0.7.snp_and_indel.recalibrated.vqsr/VQSR.tsv.gz | perl -ane 'chomp $_; if (length($F[2]) > 1 || length($F[3]) > 1) {print "$F[0]\t$F[1]\t.\t$F[2]\t$F[3]\n";}' > to_annotate.vcf
+split -a 4 -l 609 -d --numeric-suffixes=1 to_annotate.vcf to_annotate.
+perl -e 'for (1..999) {$x = sprintf("%04d", $_); print "mv to_annotate.$x to_annotate.$x.vcf;\n";}' | bash
+mkdir gridout/
+conda activate cadd-env-1.5
+bsub -q normal -M 3000 -o gridout/CADD.%I.%J -J 'CADD[1-1000]' './run_cadd.pl'
+perl -e '@F; for (1..999) {$x = sprintf("%04d",$_); push(@F, "to_annotate.$x.tsv.gz");} print "zcat " . join("\t", @F) . "\n";' | bash | grep -v "#" > cadd.tsv
+sort -k 1,1 -k2,2n cadd.tsv > cadd.sorted.tsv
+mv cadd.sorted.tsv cadd.tsv 
+bgzip cadd.tsv
+tabix -s 1 -b 2 -e 2 cadd.tsv.gz
+
+# UKBB WES
+zcat ../ukbb_plink.vcf.vqsr/VQSR.tsv.gz | perl -ane 'chomp $_; if (length($F[2]) > 1 || length($F[3]) > 1) {print "$F[0]\t$F[1]\t.\t$F[2]\t$F[3]\n";}' > to_annotate.vcf
+split -a 4 -l 765 -d --numeric-suffixes=1 to_annotate.vcf to_annotate.
+perl -e 'for (1..999) {$x = sprintf("%04d", $_); print "mv to_annotate.$x to_annotate.$x.vcf;\n";}' | bash
+mkdir gridout/
+conda activate cadd-env-1.5
+bsub -q normal -M 3000 -o gridout/CADD.%I.%J -J 'CADD[1-999]' './run_cadd.pl'
+perl -e '@F; for (1..999) {$x = sprintf("%04d",$_); push(@F, "to_annotate.$x.tsv.gz");} print "zcat " . join("\t", @F) . "\n";' | bash | grep -v "#" > cadd.tsv
+sort -k 1,1 -k2,2n cadd.tsv > cadd.sorted.tsv
+mv cadd.sorted.tsv cadd.tsv 
+bgzip cadd.tsv
+tabix -s 1 -b 2 -e 2 cadd.tsv.gz
+```
+
+### VQSR
+
+```{bash Obtain VQSR Annotations, eval = F}
+## Hg19 - WES
+## This is a FAKE file with all 10s for VQSR because it has already been applied to the file:
+bcftools query -f "%CHROM\t%POS\t%REF\t%ALT\t%FILTER\t10\n" /lustre/scratch115/teams/hurles/users/eg15/INTERVAL/snv_cognition/vcfs/INTERVAL_QCv1.0.vcf.gz > /lustre/scratch115/teams/hurles/users/eg15/INTERVAL/snv_cognition/vcfs/INTERVAL_QCv1.0/VQSR.tsv
+bgzip VQSR.tsv
+tabix -s 1 -b 2 -e 2 VQSR.tsv.gz
+
+## Hg19 - WGS
+bcftools query -f "%CHROM\t%POS\t%REF\t%ALT\t%FILTER\t%VQSLOD\n" /lustre/scratch115/teams/hurles/users/eg15/INTERVAL/snv_cognition/vcfs/15x_exome.GATK4.0.7.snp_and_indel.recalibrated.vcf.gz  > /lustre/scratch115/teams/hurles/users/eg15/INTERVAL/snv_cognition/vcfs/15x_exome.GATK4.0.7.snp_and_indel.recalibrated/VQSR.tsv
+sed -i 's_chr__' VQSR.tsv
+bgzip VQSR.tsv
+tabix -s 1 -b 2 -e 2 VQSR.tsv.gz
+
+## Hg38
+## This is a FAKE file with all 10s for VQSR because it has already been applied to the file:
+bcftools query -f "%CHROM\t%POS\t%REF\t%ALT\t%FILTER\t10\n" /lustre/scratch115/teams/hurles/users/eg15/INTERVAL/snv_cognition/vcfs/ukbb_plink.vcf.vcf.gz > /lustre/scratch115/teams/hurles/users/eg15/INTERVAL/snv_cognition/vcfs/ukbb_plink.vcf/VQSR.tsv
+sed -i 's_chr__' VQSR.tsv
+bgzip VQSR.tsv
+tabix -s 1 -b 2 -e 2 VQSR.tsv.gz
+
+```
+
+### Gnomad
+
+```{bash Obtain Gnomad Annotations, eval = F}
+## Hg19
+## Parse w/BCFtools:
+bcftools query -f "%CHROM\t%POS\t%REF\t%ALT\t%FILTER\t%INFO/AF_NFE\n" /lustre/scratch118/humgen/resources/gnomAD/release-2.0.2/vcf/exomes/gnomad.exomes.r2.0.2.sites.vcf.bgz > gnomad.tsv
+./split.pl > gnomad.split.tsv
+mv gnomad.tsv gnomad.old.tsv
+mv gnomad.split.tsv gnomad.tsv
+bgzip gnomad.tsv
+tabix -s 1 -b 2 -e 2 gnomad.tsv.gz
+
+## Hg38
+# Parse w/BCFtools:
+## BCFtools:
+bcftools query /lustre/scratch118/humgen/resources/gnomAD/release-3.0/gnomad.genomes.r3.0.sites.vcf.bgz -f "%CHROM\t%POS\t%REF\t%ALT\t%FILTER\t%INFO/AF_nfe\n" > gnomad.tsv
+sed -i 's_chr__' gnomad.tsv
+bgzip gnomad.tsv
+tabix -s 1 -b 2 -e 2 gnomad.tsv.gz
+```
+
+### VEP
+
+```{bash Run VEP, eval = F}
+## Run vep - Note: vep has to be run differently for each version of the data (due to differences b/w genome builds). This is mostly handled by the script I submit to the farm, but is different for INTERVAL and UKBB:
+# INTERVAL WES & WGS:
+bsub -q normal -M 10000 -o vep.%I.chr%J.out -J 'VEP[1-24]' './make_chr_sites.sh'
+cat *.INTERVAL.vep.sites.tsv > vep.tsv
+sed -i 's_chr__' vep.tsv
+bgzip vep.tsv
+tabix -s 1 -b 2 -e 2 vep.tsv.gz
+
+# UKBB WES:
+# Generate FAI of first 24 chromosomes and chunks to run:
+head -24 /lustre/scratch115/resources/ref/Homo_sapiens/GRCh38_15/Homo_sapiens.GRCh38_15.fa.fai > GRCh38.fai
+bedtools makewindows -g GRCh38.fai -w 10000000 > chunks.bed
+# Actually run vep:
+bsub -q normal -M 10000 -o vep.%J.%I -J 'UKBB[1-322]' './make_chr_sites.pl'
+# Note - 12 of these chunks will generate an error when running plink which states: "All variants excluded". This is because these chunks contain ONLY heterochromatin and thus no variants. This error can be ignored. Other chunks may err out so make sure to check these!
+# Had to write a custom scrip that uses the "chunks.bed" file to properly concatenate the chunks in order:
+./cat.pl > vep.tsv
+sed -i 's_chr__' vep.tsv
+bgzip vep.tsv
+tabix -s 1 -b 2 -e 2 vep.tsv.gz
+```
+
+### MPC
+
+```{bash Obtain MPC Annotations, eval = F}
+## Hg19
+
+
+## Hg38
+
+#Download MPC that Andrea Ganna lifted-over to Hg38: https://drive.google.com/drive/u/1/folders/1Pmo61_mA6rlgRpcCjNjm2npc3J498vnI
+## File: constraint_official_mpc_values_v2_mu_snp.GRCh38.txt.bgz
+
+# Move hg38 chr into the first column, convert to fordist format, and sort
+zcat constraint_official_mpc_values_v2_mu_snp.GRCh38.txt.bgz | perl -ne 'chomp $_; @F = split("\t", $_); $F[0] = $F[24]; $F[1] = $F[25]; splice(@F,19,10); print join("\t", @F) . "\n";' | sort -k 1,1 -k 2,2n > fordist_constraint_official_mpc_values_v2.GRCh38.tsv
+
+sed -i 's_chr__' fordist_constraint_official_mpc_values_v2.GRCh38.tsv
+bgzip fordist_constraint_official_mpc_values_v2.GRCh38.tsv
+tabix -s 1 -b 2 -e 2 fordist_constraint_official_mpc_values_v2.GRCh38.tsv.gz
+
+
+```
+
+### PEXT
+
+```{bash Make hg38 pext, eval=F}
+## Hg19
+Instructions for building PEXT scores:
+		 
+## Download from google cloud
+gcloud init
+gsutil gs://gnomad-public/papers/2019-tx-annotation/pre_computed/all.possible.snvs.tx_annotated.021819.tsv.bgz
+
+## Parse mean-pext (should we do Cerebellum-specific...?) using python script I wrote:
+./format_pext.py all.possible.snvs.tx_annotated.021819.tsv.gz pext.tsv
+bgzip pext.tsv
+tabix -s 1 -b 2 -e 2 pext.tsv.gz
+
+## Hg38
+## This starts in the hg19 folder as I am lifting over the hg19 pext
+## Add chr because liftover requires it for some reason:
+zcat pext.tsv | perl -ne 'print "chr$_";' > pext.chr.tsv
+
+## Make a fake vcf file
+zcat pext.tsv.gz | perl -ane 'chomp $_; print "$F[0]\t$F[1]\t.\t$F[2]\t$F[3]\t.\t.\tAVG=$F[4];CER=$F[5];GENE=$F[6]\n";' > pext.vcf
+cat header.vcf pext.vcf > pext.header.vcf
+
+## Run crossmap:
+python ~/.local/bin/CrossMap.py vcf GRCh37_to_GRCh38.chain.gz pext.header.vcf /lustre/scratch115/resources/ref/Homo_sapiens/GRCh38_15/Homo_sapiens.GRCh38_15.fa ../../hg38/pext/pext.vcf
+
+## Go to Hg38 dir...
+
+## Make a fake BCF file:
+bgzip pext.vcf
+tabix -p vcf pext.vcf.gz
+
+## Run BCFtools csq
+bcftools csq -g Homo_sapiens.GRCh38.98.gff3.gz -l -f /lustre/scratch115/resources/ref/Homo_sapiens/GRCh38_15/Homo_sapiens.GRCh38_15.fa -o pext.header.sorted.csq.bcf -Ob pext.header.sorted.vcf.gz
+```
+
+# 3. Running the Variant Engine
+
+This next bit just runs the annotation engine I have generated in java:
+
+```{bash Run Annotations, eval = F}
+
+bsub -q normal -M 2500 -o results_ukbb_wes_revised/gridout/count.%J.%I -J 'SNV[1-18756]%1000' "java -XX:+UseSerialGC -Xms2400M -Xmx2400M -jar /nfs/ddd0/eg15/SNVCounter.jar -genelist annotations/hg38/genelists/hg38.coordinates.txt -gene \$LSB_JOBINDEX -genomeversion hg38 -vcf vcfs/ukbb_plink.vcf.vcf.gz -samples ukbb_ids.txt -maf 0.001 -outdir results_ukbb_wes_revised/ -rootdir annotations/"
+grep -hv 'NONE' results_ukbb_wes_revised/*.rare_variants.tsv > counts.ukbb_wes.revised.txt
+```
