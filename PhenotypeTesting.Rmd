@@ -503,19 +503,6 @@ ggplot(totals,aes(prop.mhq,prop.icd10)) + geom_point() + scale_x_log10(name = "M
 rm(totals.mhq,totals.icd10,n.mhq,n.icd10,totals,mhq.data,icd.data)
 ```
 
-## 3H. Basic Stats About UK Biobank Participants
-
-Goal of this section is to print any basic demographic stat available just from phenotype data:
-
-```{r Basic Stats}
-
-## Median age and range
-paste0("Median Age: ", UKBB.phenotype.data[,median(agePulse)], " (range ", UKBB.phenotype.data[,min(agePulse)], "-", UKBB.phenotype.data[,max(agePulse)],")")
-
-## Sex of participants:
-paste0("Percentage of females: ", sprintf("%0.0f", (nrow(UKBB.phenotype.data[sexPulse == 2]) / nrow(UKBB.phenotype.data))*100), "%")
-```
-
 # 4. Assembling Sequencing/Array Data
 
 ## 4A. Curating Gene Lists
@@ -1329,7 +1316,8 @@ Just to make sure sexes aren't burdened different between variant classes among 
 ```{r Plotting Quant sHET, fig.height=5, fig.width=4}
 
 ## Sex specific burden:
-for (t in c("DEL","LOF_HC")) {
+sex.burden.calc <- function(t) {
+
   sex.specific <- variant.counts[allele.freq == 0 & type == t,c("sample_id","product_sHET")]
   sex.specific <- merge(sex.specific,UKBB.phenotype.data[,c("eid","sexPulse")],by.x="sample_id",by.y="eid")
   print(nrow(sex.specific))
@@ -1347,24 +1335,29 @@ for (t in c("DEL","LOF_HC")) {
   prop <- prop.table(chi.sq,margin = 1)*100
   fisher <- fisher.test(chi.sq)
   
-  print(paste0(t, " ≥ 0.15 sHET Prop Male (", sprintf("%0.2f",prop[1,2]),"), Female (", sprintf("%0.2f",prop[2,2]),"), p = ", sprintf("%0.2f", fisher$p.value)))
-  
+  format.text <- paste0(t, " ≥ 0.15 sHET Prop Male (", sprintf("%0.2f",prop[1,2]),"), Female (", sprintf("%0.2f",prop[2,2]),"), p = ", sprintf("%0.2f", fisher$p.value))
+  print(format.text)
+  return(format.text)
+
 }
+
+format.sex.burden.DEL <- sex.burden.calc("DEL")
+format.sex.burden.PTV <- sex.burden.calc("LOF_HC")
 ```
 
-# 5. Variant Impact on Traits
+# 5. Variant Burden Impact on Traits
 
 ## 5A. Function for Linear Modeling
 
 This code blob builds a function which does linear or logistic modeling for all my variant associations of the format:
 
-$ trait = N_{variants} + age + age^2 + PC1..PC10 $
+$ phenotype \sim s_{het[i,v]} + age + age^2 + PC1..PC10 $
 
 Where
 
-$ N_{variants}$
+$ s_{het[i,v]}$
 
-is number of qualifying (e.g. DEL, DUP, LoF, MIS, SYN) variants per individual. This block will also switch from linear to logistic based on a flag given.
+is the s~het~ burden in individual $i$ for variant class $v$, where $v$ can be DEL, DUP, PTV, Missense, or Synonymous. This block has a number of flags to handle the differing cases we test (i.e. logistic vs linear model, removing all individuals without children, etc.).
 
 ```{r Linear Regression Function}
 
@@ -1390,7 +1383,7 @@ run.regression <- function(maf,
     final.stats <- final.stats[!sample_id %in% samples.UKBB[,eid]]
   }
   
-  if (cutoff.high == T & (variant.type == "DEL" | variant.type == "DUP")) {
+  if (cutoff.high == T & (variant.type == "DEL" | variant.type == "DUP" | variant.type == "LOF_HC")) {
     final.stats <- final.stats[get(gene.list) <= 3]
   }
   
@@ -1574,6 +1567,13 @@ results.fertility.genelists[,sex:=if_else(y.var=="children.fathered",1,2)]
 results.fertility.genelists[,c("var.beta","var.stderr","var.p","n.var","n.indvs"):=run.regression(maf,gene.list,y.var,sex,variant.type,binary=T,cutoff.high = T),by=1:nrow(results.fertility.genelists)]
 
 plot.result(results.fertility.genelists,T,70,0.5,1.2,"Total Number of\nVariants")
+
+paste0("Number of DEL Individuals Lost, pLI ≥ 0.9  : ", results.fertility[variant.type == "DEL" & maf == 0,sum(n.indvs)] - results.fertility.genelists[variant.type == "DEL" & maf == 0 & gene.list == "highPLI",sum(n.indvs)])
+paste0("Number of DEL Individuals Lost, sHET ≥ 0.9 : ", results.fertility[variant.type == "DEL" & maf == 0,sum(n.indvs)] - results.fertility.genelists[variant.type == "DEL" & maf == 0 & gene.list == "highsHET",sum(n.indvs)])
+
+paste0("Number of PTV Individuals Lost, pLI ≥ 0.9  : ", results.fertility[variant.type == "LOF_HC" & maf == 0,sum(n.indvs)] - results.fertility.genelists[variant.type == "LOF_HC" & maf == 0 & gene.list == "highPLI",sum(n.indvs)])
+paste0("Number of PTV Individuals Lost, sHET ≥ 0.9 : ", results.fertility[variant.type == "LOF_HC" & maf == 0,sum(n.indvs)] - results.fertility.genelists[variant.type == "LOF_HC" & maf == 0 & gene.list == "highsHET",sum(n.indvs)])
+
 ```
 
 #### Only Individuals With >0 Children
@@ -1649,11 +1649,9 @@ variant.counts <- copy(variant.counts.backup)
 rm(variant.counts.backup)
 
 ## Total number of individuals with path CNVs:
-test <- ukbb.annotated.cnvs.qcd[eid %in% samples.UKBB.cnv[,eid] & filter.0.95.wes.support.score == T & path.locus != "null"]
+path.cnv.counts <- ukbb.annotated.cnvs.qcd[eid %in% samples.UKBB.cnv[,eid] & filter.0.95.wes.support.score == T & path.locus != "null"]
 
-paste0("CNV Carriers account for ",sprintf("%0.1f",(length(unique(test[,eid]))/nrow(samples.UKBB.cnv)*100)),"% (", length(unique(test[,eid])),") of individuals.)")
-
-# rm(test)
+paste0("CNV Carriers account for ",sprintf("%0.1f",(length(unique(path.cnv.counts[,eid]))/nrow(samples.UKBB.cnv)*100)),"% (", length(unique(path.cnv.counts[,eid])),") of individuals.)")
 ```
 
 #### Gene Expression in Testis
@@ -2159,6 +2157,16 @@ base.fertilities <- bind_rows(base.fertilities, data.table(fertility = UKBB.phen
 base.childlessness.male <- nrow(UKBB.phenotype.data[sexPulse == 1 & eid %in% variant.counts[,sample_id] & children.fathered == 0])/nrow(UKBB.phenotype.data[sexPulse == 1 & eid %in% variant.counts[,sample_id] & children.fathered >= 0])
 base.childlessness.female <- nrow(UKBB.phenotype.data[sexPulse == 2 & eid %in% variant.counts[,sample_id] & live.births == 0])/nrow(UKBB.phenotype.data[sexPulse == 2 & eid %in% variant.counts[,sample_id] & live.births >= 0])
 
+paste0("Base Childlessness Male             : ", sprintf("%0.1f",base.childlessness.male*100))
+paste0("Base Childlessness Female           : ", sprintf("%0.1f",base.childlessness.female*100))
+
+paste0("Base Children Among Males w/Child   : ", sprintf("%0.2f",base.fertilities[sex == 1 & inc.zero == F,fertility]))
+paste0("Base Children Among Females w/Child : ", sprintf("%0.2f",base.fertilities[sex == 2 & inc.zero == F,fertility]))
+
+paste0("Base Children Among Males          : ", sprintf("%0.2f",base.fertilities[sex == 1 & inc.zero == T,fertility]))
+paste0("Base Children Among Females        : ", sprintf("%0.2f",base.fertilities[sex == 2 & inc.zero == T,fertility]))
+
+
 ## Array of ages to sample from:
 ages <- UKBB.phenotype.data[eid %in% variant.counts[,sample_id], agePulse]
 
@@ -2654,6 +2662,9 @@ ggplot(means, aes(iq.cut,V1)) +
   xlab("IQ Bin") + 
   ylab("Proportion of Individuals") + 
   theme
+
+paste0("Mean IQ, Swedish Data: ", sprintf("%0.0f", mean.cog))
+paste0("SD   IQ, Swedish Data: ", sprintf("%0.0f", sd.cog))
 ```
 
 ##### IQ and Childlessness
@@ -2839,6 +2850,8 @@ paste0("Contribution of Cognition to Fitness: ",
        " - ",
        sprintf("%0.1f",(((1 - model.cog[shet == 1 & sex == 1,ratio_lower]) / (1 - model.fertility[shet == 1 & sex == 1,ratio_lower]))*100)),
        ")")
+
+paste0("Predicted drop in IQ for sHET = 1 male: " ,sprintf("%0.2f", model.cog[shet == 1 & sex == 1,100 - expected.iq_mid]))
 ```
 
 ## 6G. Fertility + Mental Health
@@ -3592,9 +3605,7 @@ linear.data
 
 ggsave("figures/supplement/SuppFig3.png",linear.data[[2]], dpi = 600, height = 3, width = 8.5, units = "in")
 
-linear.data[[1]][Sex == "Male" & variant.type == "META",paste0("Males have ",sprintf("%0.2f",abs(var.beta))," fewer children", " [95% CI ",sprintf("%0.2f",abs(var.beta+(1.96*var.stderr))), "-",sprintf("%0.2f",abs(var.beta-(1.96*var.stderr))),"]", " p=",if_else(var.p<=1e-2,sprintf("%0.1e",var.p),sprintf("%0.2f",var.p)))]
-
-linear.data[[1]][Sex == "Female" & variant.type == "META",paste0("Females have ",sprintf("%0.2f",abs(var.beta))," fewer children", " [95% CI ",sprintf("%0.2f",abs(var.beta+(1.96*var.stderr))), "-",sprintf("%0.2f",abs(var.beta-(1.96*var.stderr))),"]", " p=",if_else(var.p<=1e-2,sprintf("%0.1e",var.p),sprintf("%0.2f",var.p)))]
+linear.data[[1]][variant.type == "META",paste0(Sex, "s have ",sprintf("%0.2f",abs(var.beta))," fewer children", " [95% CI ",sprintf("%0.2f",abs(var.beta+(1.96*var.stderr))), "-",sprintf("%0.2f",abs(var.beta-(1.96*var.stderr))),"]", " p=",if_else(var.p<=1e-2,sprintf("%0.1e",var.p),sprintf("%0.2f",var.p)))]
 
 ```
 
@@ -4137,9 +4148,173 @@ write.table(supptable5,"figures/supplement/SuppTable5.tsv",col.names=T,row.names
 
 ```
 
+## 7D. Numbers Catalogue
+
+This documents all numbers in the manuscript printed in rough order. These are just replicated from above.
+
+```{r Numbers Catalogue}
+## Median age and range
+paste0("Median age                                     : ", UKBB.phenotype.data[,median(agePulse)], " (range ", UKBB.phenotype.data[,min(agePulse)], "-", UKBB.phenotype.data[,max(agePulse)],")")
+paste0("")
+
+## Number of Individuals per datatype:
+paste0("Number of individuals with CNV data            : ", length(unique(variant.counts[type == "DEL" & allele.freq == 0,sample_id])))
+paste0("Number of individuals with SNV data            : ", length(unique(variant.counts[type == "LOF_HC" & allele.freq == 0,sample_id])))
+paste0("")
+
+## Sex Burden of sHET:
+format.sex.burden.DEL
+format.sex.burden.PTV
+paste0("")
+
+## Linear Fertility Model (# Children ~ sHET Burden):
+linear.data[[1]][variant.type == "META",paste0(Sex, "s have ",sprintf("%0.2f",abs(var.beta))," fewer children", " [95% CI ",sprintf("%0.2f",abs(var.beta+(1.96*var.stderr))), "-",sprintf("%0.2f",abs(var.beta-(1.96*var.stderr))),"]", " p=",if_else(var.p<=1e-2,sprintf("%0.1e",var.p),sprintf("%0.2f",var.p)))]
+paste0("")
+
+## Logistic Fertility Model (Childless ~ sHET Burden):
+plot.a[[1]][ variant.type == "META",paste0(Sex, " OR=",sprintf("%0.2f",var.beta), " [95% CI ",sprintf("%0.2f",exp(log(var.beta)-(1.96*var.stderr))), "-",sprintf("%0.2f",exp(log(var.beta)+(1.96*var.stderr))),"]", " p=",if_else(var.p<=1e-2,sprintf("%0.1e",var.p),sprintf("%0.2f",var.p)))]
+paste0("")
+
+## Sex of participants:
+paste0("Percentage of females                          : ", sprintf("%0.0f", (nrow(UKBB.phenotype.data[sexPulse == 2]) / nrow(UKBB.phenotype.data))*100), "%")
+paste0("")
+
+## No Disease Genes:
+no.disease.plot[[1]][Sex == "Male" & variant.type == "META",paste0(Sex," Disease Gene OR=",sprintf("%0.2f",var.beta), " [95% CI ",sprintf("%0.2f",exp(log(var.beta)-(1.96*var.stderr))), "-",sprintf("%0.2f",exp(log(var.beta)+(1.96*var.stderr))),"]", " p=",if_else(var.p<=1e-2,sprintf("%0.1e",var.p),sprintf("%0.2f",var.p)))]
+paste0("")
+
+## No Male Infertility Genes:
+print(paste0("Number of male infertility genes: ", nrow(male.infertility.genes)))
+no.male.fertility.plot[[1]][Sex == "Male" & variant.type == "META",paste0(Sex, " Fertility Gene OR=",sprintf("%0.2f",var.beta), " [95% CI ",sprintf("%0.2f",exp(log(var.beta)-(1.96*var.stderr))), "-",sprintf("%0.2f",exp(log(var.beta)+(1.96*var.stderr))),"]", " p=",if_else(var.p<=1e-2,sprintf("%0.1e",var.p),sprintf("%0.2f",var.p)))]
+paste0("")
+
+## Living with a Partner:
+fig.partner[[1]][Sex == "Male" & variant.type == "META",paste0(Sex, " Partner OR=",sprintf("%0.2f",var.beta), " [95% CI ",sprintf("%0.2f",exp(log(var.beta)-(1.96*var.stderr))), "-",sprintf("%0.2f",exp(log(var.beta)+(1.96*var.stderr))),"]", " p=",if_else(var.p<=1e-2,sprintf("%0.1e",var.p),sprintf("%0.2f",var.p)))]
+paste0("")
+
+## Same Sex
+same.sex[[1]][Sex == "Male" & variant.type == "META",paste0(Sex, " Same Sex sHET OR=",sprintf("%0.2f",var.beta), " [95% CI ",sprintf("%0.2f",exp(log(var.beta)-(1.96*var.stderr))), "-",sprintf("%0.2f",exp(log(var.beta)+(1.96*var.stderr))),"]", " p=",if_else(var.p<=1e-2,sprintf("%0.1e",var.p),sprintf("%0.2f",var.p)))]
+same.sex.beta.plot[[1]][,paste0(sexPulse, " Same Sex Phenotype OR=",sprintf("%0.2f",beta), " [95% CI ",sprintf("%0.2f",exp(log(beta)-(1.96*std.error))), "-",sprintf("%0.2f",exp(log(beta)+(1.96*std.error))),"]", " p=",if_else(p.val<=1e-2,if_else(p.val <= 1e-100,"p ≤ 1e-100",sprintf("%0.1e",p.val)),sprintf("%0.2f",p.val)))]
+paste0("")
+
+##Fluid Intel Contrib to Fitness:
+paste0("Number of Fluid Intel Indv: ", sum(fig.cog[[1]][variant.type == "META",n.indvs]), " (Male: ",fig.cog[[1]][Sex == "Male" & variant.type == "META",n.indvs],"; Female: ", fig.cog[[1]][Sex == "Female" & variant.type == "META",n.indvs], ")")
+paste0("Contribution of Cognition to Fitness: ",
+       sprintf("%0.1f",(((1 - model.cog[shet == 1 & sex == 1,ratio_mid]) / (1 - model.fertility[shet == 1 & sex == 1,ratio_mid]))*100)),
+       " (",
+       sprintf("%0.1f",(((1 - model.cog[shet == 1 & sex == 1,ratio_upper]) / (1 - model.fertility[shet == 1 & sex == 1,ratio_upper]))*100)),
+       " - ",
+       sprintf("%0.1f",(((1 - model.cog[shet == 1 & sex == 1,ratio_lower]) / (1 - model.fertility[shet == 1 & sex == 1,ratio_lower]))*100)),
+       ")")
+paste0("")
+
+## UKBB Biases
+email.data[[1]][ variant.type == "META",paste0(Sex, " Email OR=",sprintf("%0.2f",var.beta), " [95% CI ",sprintf("%0.2f",exp(log(var.beta)-(1.96*var.stderr))), "-",sprintf("%0.2f",exp(log(var.beta)+(1.96*var.stderr))),"]", " p=",if_else(var.p<=1e-2,sprintf("%0.1e",var.p),sprintf("%0.2f",var.p)))]
+answered.mhq.data[[1]][ variant.type == "META",paste0(Sex, " MHQ OR=",sprintf("%0.2f",var.beta), " [95% CI ",sprintf("%0.2f",exp(log(var.beta)-(1.96*var.stderr))), "-",sprintf("%0.2f",exp(log(var.beta)+(1.96*var.stderr))),"]", " p=",if_else(var.p<=1e-2,sprintf("%0.1e",var.p),sprintf("%0.2f",var.p)))]
+paste0("")
+
+## MH Childlessness:
+mhq.beta.plot[[1]][,paste0(sexPulse, " MH OR=",sprintf("%0.2f",beta), " [95% CI ",sprintf("%0.2f",exp(log(beta)-(1.96*std.error))), "-",sprintf("%0.2f",exp(log(beta)+(1.96*std.error))),"]", " p=",if_else(p.val<=1e-2,if_else(p.val <= 1e-100,"p ≤ 1e-100",sprintf("%0.1e",p.val)),sprintf("%0.2f",p.val)))]
+paste0("")
+
+## Path CNV Counts/Tests:
+paste0("CNV Carriers account for ",sprintf("%0.1f",(length(unique(path.cnv.counts[,eid]))/nrow(samples.UKBB.cnv)*100)),"% (", length(unique(path.cnv.counts[,eid])),") of individuals.)")
+no.path.cnvs.plot[[1]][Sex == "Male" & variant.type == "META",paste0(Sex," No Path CNVs OR=",sprintf("%0.2f",var.beta), " [95% CI ",sprintf("%0.2f",exp(log(var.beta)-(1.96*var.stderr))), "-",sprintf("%0.2f",exp(log(var.beta)+(1.96*var.stderr))),"]", " p=",if_else(var.p<=1e-2,sprintf("%0.1e",var.p),sprintf("%0.2f",var.p)))]
+paste0("")
+
+## MH Contribution to Fitness:
+no.mh.patients.plot[[1]][variant.type == "META",paste0(Sex," No MH Patients OR=",sprintf("%0.2f",var.beta), " [95% CI ",sprintf("%0.2f",exp(log(var.beta)-(1.96*var.stderr))), "-",sprintf("%0.2f",exp(log(var.beta)+(1.96*var.stderr))),"]", " p=",if_else(var.p<=1e-2,sprintf("%0.1e",var.p),sprintf("%0.2f",var.p)))]
+paste0("Contribution of MHTs to Fitness: ",
+       sprintf("%0.1f",(((1 - model.mhq[shet == 1 & sex == 1,ratio_mid]) / (1 - model.fertility[shet == 1 & sex == 1,ratio_mid]))*100)),
+       " (",
+       sprintf("%0.1f",(((1 - model.mhq[shet == 1 & sex == 1,ratio_upper]) / (1 - model.fertility[shet == 1 & sex == 1,ratio_upper]))*100)),
+       " - ",
+       sprintf("%0.1f",(((1 - model.mhq[shet == 1 & sex == 1,ratio_lower]) / (1 - model.fertility[shet == 1 & sex == 1,ratio_lower]))*100)),
+       ")")
+paste0("")
+
+## Partner at Home Contribution to Fitness:
+paste0("Contribution of Partner at Home to Fitness: ",
+       sprintf("%0.1f",(((1 - model.partner[shet == 1 & sex == 1,ratio_mid]) / (1 - model.fertility[shet == 1 & sex == 1,ratio_mid]))*100)),
+       " (",
+       sprintf("%0.1f",(((1 - model.partner[shet == 1 & sex == 1,ratio_upper]) / (1 - model.fertility[shet == 1 & sex == 1,ratio_upper]))*100)),
+       " - ",
+       sprintf("%0.1f",(((1 - model.partner[shet == 1 & sex == 1,ratio_lower]) / (1 - model.fertility[shet == 1 & sex == 1,ratio_lower]))*100)),
+       ")")
+paste0("")
+
+## Overall contribution to Fitness:
+paste0("Contribution of sHET to Fitness (sex averaged): ",
+       sprintf("%0.1f",((1-model.fertility[shet == 1,mean(ratio_mid)])*100)),
+       " (",
+       sprintf("%0.1f",((1-model.fertility[shet == 1,mean(ratio_upper)])*100)),
+       " - ",
+       sprintf("%0.1f",((1-model.fertility[shet == 1,mean(ratio_lower)])*100)),
+       ")")
+paste0("")
+
+## Number of Individuals
+paste0("Number of Broadly Euro Indiv                   : ", table(UKBB.raw.phenotypes[,`22006-0.0`]))
+paste0("Number of Individuals after filtering relateds : ", nrow(UKBB.phenotype.data))
+paste0("")
+
+## Total CNVs:
+quant.table <- data.table(table(ukbb.annotated.cnvs.qcd[filter.0.95.wes.support.score==T,ct]))
+paste0("Number of CNVs (Unfiltered Indiv)  : ",quant.table[,sum(N)], " (DEL: ", quant.table[V1 == "DEL",N], "; DUP: ", quant.table[V1 == "DUP",N],")")
+quant.table <- data.table(table(ukbb.annotated.cnvs.qcd[eid %in% samples.UKBB.cnv[,eid] & filter.0.95.wes.support.score==T,ct]))
+paste0("Number of CNVs (Filtered Indiv)    : ",quant.table[,sum(N)], " (DEL: ", quant.table[V1 == "DEL",N], "; DUP: ", quant.table[V1 == "DUP",N],")")
+paste0("Number of CNV Loci                 : ",nrow(data.table(table(ukbb.annotated.cnvs.qcd[,locus]))))
+paste0("")
+rm(quant.table)
+
+## Total SNVs:
+paste0("Number of SNV/INDel Variants: ", nrow(variants.UKBB[,]))
+paste0("")
+
+## UKBB Unmapped Regions:
+paste0("Number of genes affected by UKBB Issue : XXX")
+paste0("Go to the UKBB Unmapped Regions section for these numbers!!!")
+paste0("")
+
+## Total sHET Genes:
+paste0("Total number of genes with sHET value                       : ", nrow(shet.genes))
+paste0("Total number of genes with sHET value in both hg19 and hg38 : ", nrow(merge(shet.genes,gene.translate)))
+paste0("")
+
+## Total Disease Genes:
+print(paste0("Number of male infertility genes: ", nrow(male.infertility.genes)))
+paste0("")
+
+## Total Indiv Lost with >3 filter:
+paste0("Number of DEL Individuals Lost, pLI ≥ 0.9  : ", results.fertility[variant.type == "DEL" & maf == 0,sum(n.indvs)] - results.fertility.genelists[variant.type == "DEL" & maf == 0 & gene.list == "highPLI",sum(n.indvs)])
+paste0("Number of DEL Individuals Lost, sHET ≥ 0.9 : ", results.fertility[variant.type == "DEL" & maf == 0,sum(n.indvs)] - results.fertility.genelists[variant.type == "DEL" & maf == 0 & gene.list == "highsHET",sum(n.indvs)])
+
+paste0("Number of PTV Individuals Lost, pLI ≥ 0.9  : ", results.fertility[variant.type == "LOF_HC" & maf == 0,sum(n.indvs)] - results.fertility.genelists[variant.type == "LOF_HC" & maf == 0 & gene.list == "highPLI",sum(n.indvs)])
+paste0("Number of PTV Individuals Lost, sHET ≥ 0.9 : ", results.fertility[variant.type == "LOF_HC" & maf == 0,sum(n.indvs)] - results.fertility.genelists[variant.type == "LOF_HC" & maf == 0 & gene.list == "highsHET",sum(n.indvs)])
+paste0("")
+
+## Base Fertility Stats:
+paste0("Base Childlessness Male             : ", sprintf("%0.1f",base.childlessness.male*100))
+paste0("Base Childlessness Female           : ", sprintf("%0.1f",base.childlessness.female*100))
+
+paste0("Base Children Among Males w/Child   : ", sprintf("%0.2f",base.fertilities[sex == 1 & inc.zero == F,fertility]))
+paste0("Base Children Among Females w/Child : ", sprintf("%0.2f",base.fertilities[sex == 2 & inc.zero == F,fertility]))
+
+paste0("Base Children Among Males          : ", sprintf("%0.2f",base.fertilities[sex == 1 & inc.zero == T,fertility]))
+paste0("Base Children Among Females        : ", sprintf("%0.2f",base.fertilities[sex == 2 & inc.zero == T,fertility]))
+paste0("")
+
+## Change in cognition:
+paste0("Predicted drop in IQ for sHET = 1 male: " ,sprintf("%0.2f", model.cog[shet == 1 & sex == 1,100 - expected.iq_mid]))
+paste0("")
+
+## Median high pLI Gene:
+paste0("high pLI genes (≥ 0.9) have a mean sHET value of : ",sprintf("%0.3f",mean.highpLI))
+paste0("")
+```
 
 
-
+```
 
 
 
