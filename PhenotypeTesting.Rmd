@@ -21,23 +21,17 @@ This script is agnostic to the UKBiobank application number. You should be able 
 
 knitr::opts_chunk$set(
 	echo = TRUE,
-	message = FALSE,
-	warning = FALSE
 )
 
 library(biomaRt) ## Get gene lists we need
 library(readxl) ## Read Supplemental Excel tables
-library(readr)
 library(data.table) ## Better than data.frame
-library(ggplot2) ## Plotting
 library(patchwork) ## Arranging ggplots
-library(dplyr) ## for mutating data.tables
-library(tidyr) ## for mutating data.tables
 library(broom) ## Makes getting covars out of lm much tidier
-library(stringr) ## Random string manipulation functions
 library(meta) ## For doing meta analysis
 library(mratios) ## Need this to calculate 95% CIs for ratios of two means
-
+library(svglite) ## Need to create figure 3 properly (ggsave doesn't like anything with an alpha)
+library(tidyverse) ## Takes care of ggplot, tidyr, dplyr, and stringr
 ```
 
 ## 1B. Themes
@@ -693,8 +687,6 @@ This is a list of genes confirmed as playing a role in male infertility from [Ma
 
 curl -L -o rawdata/genelists/male_infertility_genes.xlsx "https://oup.silverchair-cdn.com/oup/backfile/Content_public/Journal/humrep/34/5/10.1093_humrep_dez022/2/dez022_supplementary_tables_siii_-_svi_final.xlsx?Expires=1591021841&Signature=Fs~qzUue5gM-9WRPnYlSzzQ1kQpryWdxzLqW1Yx74QHgzCVgGzeuNyf2ZhyqDRTUSmWoaPTHi-O~PXLJRsW~jsJKq8YVr-mGYlbJ9hb40YJIulotNzUiY1mIRYyS7MTvncojcWo9xwEfB~-KNeguJbfX7dv6f4RgDtHX1ne59zK9kueOK-jJRrzrW73Xb07JtMuGM3ChvbFAObx4-9cPg44U~JzEERrAoBZjkUuqt1tEQ2EM70Yy26FL-v34-P2nu3BtV3hulfWfk9dzdMP-hRupRkwfFJ3RaaWU5iboHwT9srQlRMEkJ0XHBp8MeeImXgFJAxzC3EPYhU4YgYpa7w__&Key-Pair-Id=APKAIE5G5CRDK6RD3PGA"
 
-#/nfs/users/nfs_e/eg15/scripts/matcher.pl -file1 ../hg19.genes.txt -file2 male_infertility_genes.txt -col1 5 -r | sed 's_^M__g' | perl -ane 'chomp $_; splice(@F, 5, 10); print join("\t", @F) . "\n";' > male_infertility_genes.annotated.txt
-
 ```
 
 ```{r Process Male Infertility Gene XLSX}
@@ -879,7 +871,7 @@ gunzip -f rawdata/genelists/GTEx_Analysis_2016-01-15_v7_RNASeQCv1.1.8_gene_media
 
 ```{r Load Gene Expression}
 ## GTEX expression data:
-expression <- fread("/Users/eg15/Documents/Completed Projects/DDD-RT/Manuscript/Supplement/GTEx_Analysis_2016-01-15_v7_RNASeQCv1.1.8_gene_median_tpm.gct")
+expression <- fread("rawdata/genelists/GTEx_Analysis_2016-01-15_v7_RNASeQCv1.1.8_gene_median_tpm.gct")
 expression[,c("gene","vers"):=tstrsplit(gene_id,".",fixed=T),by=1:nrow(expression)]
 setnames(expression,"gene","hg19.GENE")
 
@@ -1173,6 +1165,62 @@ For how CNV data was prepared prior to this step, please see the document `CNVCa
 2. Individuals which actually have CNV data.
 3. The CNVs themselves.
 
+```{r fix, eval = F}
+
+get.header <- readRDS("/Users/eg15/Documents/Current Projects/INTERVAL/CNVCalling_Filtering/RawData/ukbb.batchAll.qcd.04032020.rds")
+header <- names(get.header)
+header <- c(header,c("locus","path.locus"))
+rm(get.header)
+
+ukbb.to.fix <- fread("rawdata/cnvresources/ukbb.unfiltered.qcdMerged.txt")
+setnames(ukbb.to.fix,names(ukbb.to.fix),header)
+
+split.files <- ukbb.to.fix[,"split.file"]
+split.files <- unique(split.files)
+split.files[,short.name:=sub(".sorted.bed.gz","",basename(split.file)),by=1:nrow(split.files)]
+
+merge.key <- fread("/Users/eg15/Documents/Current Projects/INTERVAL/CNVCalling_Filtering/UKBB_Batches/Link_file_George_Eugene.dat")
+merge.key <- merge.key[,c("ID","f.eid")]
+setnames(merge.key,"f.eid","george")
+merge.key[,george:=as.character(george)]
+
+george_to_martin <- fread("/Users/eg15/Documents/Current Projects/INTERVAL/CNVCalling_Filtering/UKBB_Batches/George_to_Martin.txt")
+george_to_martin <- george_to_martin[,c("V1","V7","V12")]
+setnames(george_to_martin, names(george_to_martin),c("george","eid","array_num"))
+george_to_martin[,george:=as.character(george)]
+george_to_martin[,eid:=as.character(eid)]
+
+merge.key <- merge(merge.key,george_to_martin,by="george")
+merge.key <- merge(split.files, merge.key,by.x = "short.name",by.y = "ID")
+merge.key <- merge.key[,c("split.file","eid")]
+ukbb.to.fix <- merge(ukbb.to.fix, merge.key, by = "split.file")
+
+cols.to.keep <- c("eid","chr","start","end","locus","Copy_Number","gt","ct","Length_bp","path.locus","Max_Log_BF","LRR_mean","LRR_median","LRR_SD","BAF_mean","BAF_median","BAF_SD","WF","BAF_drift","NumCNV","density","callrate","wes.probe.count","No_Probes","site.BAF_mean","site.BAF_SD","site.BAF_median","site.LRR_mean","site.LRR_SD","site.LRR_median","badness.score","filter.0.95.wes.support.score","wes.support.score")
+
+ukbb.to.fix[,ct:=if_else(Copy_Number < 2, "DEL", "DUP")]
+ukbb.to.fix[,ct:=as.factor(ct)]
+ukbb.to.fix[,gt:=ifelse(Copy_Number == 0 | Copy_Number == 4,2,1)]
+
+ukbb.to.fix <- ukbb.to.fix[,..cols.to.keep]
+
+to.filter <- fread("/Users/eg15/Documents/Current Projects/Fertility/RawData/cnvs/ukbb.filtered_cnv_indvs.txt")
+to.filter <- merge(to.filter,merge.key,by="split.file")
+
+fam <- fread("../../INTERVAL/CNVCalling_Filtering/UKBB_Batches/ukb44165_cal_chr1_v2_s488288.fam")
+
+wba <- UKBB.raw.phenotypes[,c("eid","22006-0.0")]
+setnames(wba,names(wba),c("eid","wba"))
+wba[,in.fam:=if_else(eid %in% fam[,V1],1,0)]
+wba[,has_cnvs:=if_else(in.fam == 0, 0, if_else(eid %in% to.filter[,eid], 0, 1))]
+wba[,has_called_cnvs:=if_else(in.fam == 0,NaN,if_else(eid %in% ukbb.to.fix[,eid],1,0))]
+table(wba[,c("has_called_cnvs","has_cnvs")],useNA = "always")
+
+write.table(wba[,c("eid","has_cnvs")],"rawdata/cnvresources/has_cnvs.txt",sep = "\t", col.names = T, row.names = F, quote = F)
+write.table(ukbb.to.fix,"rawdata/cnvresources/ukbb.cnvs.qcd.txt",sep = "\t", col.names = T, row.names = F, quote = F)
+
+```
+
+
 #### Downloading Requisite Data From UKBB
 
 Section tbd, but need to make sure they get two files:
@@ -1220,8 +1268,6 @@ build.omics.map <- function(cnv.file, id.name, merge.key) {
   ## Get allele frequency information from CNVCalling_Filtering.Rmd:
   annotated.cnvs.qcd <- fread(cnv.file)
   annotated.cnvs.qcd[,eid:=as.character(eid)]
-  
-  annotated.cnvs.qcd[,gt:=ifelse(Copy_Number == 0 | Copy_Number == 4,2,1)]
   
   # Add impact information
   annotated.cnvs.qcd <- merge(annotated.cnvs.qcd,annotations[,c("ct","genes","highPLI","highsHET","product_sHET","product_sHET_no_disease","product_sHET_no_male_infertility","locus")],by=c("locus","ct"))
@@ -1590,7 +1636,9 @@ results.fertility.zero[,c("var.beta","var.stderr","var.p","n.var","n.indvs"):=ru
 plot.result(results.fertility.zero,F,20,-1,0.5,"# of Individuals\nWith sHET\n> 0.15")
 ```
 
-#### Excluding Male Infertility Genes
+#### Excluding Various Genes/Individuals
+
+##### Male Infertility Genes
 
 ```{r Exclude Male Infertility Genes, fig.height=7, fig.width=8}
 
@@ -1606,7 +1654,7 @@ results.excl.male[,c("var.beta","var.stderr","var.p","n.var","n.indvs"):=run.reg
 plot.result(results.excl.male,T,70,0,1.4,"# of Individuals\nWith sHET\n> 0.15")
 ```
 
-#### Excluding Known Disease Genes
+##### Known Disease Genes
 
 ```{r Exclude Disease, fig.height=7, fig.width=8}
 
@@ -1621,8 +1669,7 @@ results.excl.disease[,c("var.beta","var.stderr","var.p","n.var","n.indvs"):=run.
 plot.result(results.excl.disease,T,70,0,1.4,"# of Individuals\nWith sHET\n> 0.15")
 ```
 
-
-#### Excluding Pathogenic CNV Carriers
+##### Pathogenic CNV Carriers
 
 ```{r fertility no pathogenic, fig.height=7, fig.width=8}
 
@@ -2875,8 +2922,7 @@ sex.diff.mhq[,sexPulse:=factor(sex,levels=c(1,2),labels=c("Male","Female"))]
 beta.plot <- ggplot(sex.diff.mhq, aes(sexPulse,beta,colour=sexPulse)) + 
   geom_point() + 
   geom_errorbar(aes(ymin=var.ci.lower,ymax=var.ci.upper)) + 
-  scale_y_continuous(limits=c(-0.1,1)) + 
-  scale_y_continuous(name="Beta") + 
+  scale_y_continuous(name="Beta",limits=c(-0.1,1)) + 
   theme.legend
 
 ## This grabs the actual fit values from the LM to plot
@@ -3246,9 +3292,7 @@ make.meta.table <- function(data, is.linear,
   }
 
   if (!is.na(alt.y.axis)) {
-    
     y.axis <- alt.y.axis
-    
   }
   
   n.male <- data[sex == 1 & maf == allele.freq & (variant.type == "DEL" | variant.type == "LOF_HC"), sum(n.indvs)]
@@ -3266,6 +3310,8 @@ make.meta.table <- function(data, is.linear,
   } else {
     add.theme <- theme(axis.title.x=element_blank(),axis.text.x=element_blank(), panel.grid.major.y = element_blank())
   }
+  
+  
   
   plot <- ggplot(meta.table,aes(variant.type,var.beta,group=Sex,colour=Sex)) +
     geom_hline(aes(yintercept=if_else(is.linear==T,0, 1)),colour="red",linetype=2,size=1) +
@@ -3287,12 +3333,14 @@ make.meta.table <- function(data, is.linear,
 
 ## 7B. Main Text
 
+Please note -- a very light amount of editing was used to make better figure legends for main text figures 1 and 2.
+
 ### Figure 1.
 
 ```{r fig.height=5, fig.width=7}
 
 ## This just gets a forest plot for our primary childlessness logistic regression
-plot.a <- make.meta.table(results.fertility, F, gene.list = "product_sHET", b = 0.25)
+plot.a <- make.meta.table(results.fertility, F, b = 0.25)
 
 ## the 'tab' data.frame is relevant only for plot b and c, using old regressions for plot. 
 ## This is to just tabulate vitality statistics for each individual
@@ -3627,7 +3675,7 @@ ggsave("figures/supplement/SuppFig4.png",remove.zero[[2]], dpi = 600, height = 3
 gene.data.pli <- make.meta.table(results.fertility.genelists[gene.list == "highPLI"], F, gene.list = "highPLI", alt.y.axis = "Odds Ratio for loss of 1 high (>0.9) pLI gene",ymin=0.4,ymax=1.25,p.pos = 0.5,block = 0.4)
 gene.data.pli[[2]] <- gene.data.pli[[2]] + theme(legend.position="blank")
 
-alt.y <- expression(bold(Odds~Ratio~`for`~loss~of~"1"~high~"(>0.15)"~s[het]~gene))
+alt.y <- expression(bold(Odds~Ratio~`for`~loss~of~"1"~high~"(" >= 0.15~")"~s[het]~gene))
 gene.data.shet <- make.meta.table(results.fertility.genelists[gene.list == "highsHET"], F, gene.list = "highsHET", alt.y.axis = alt.y,ymin=0.4,ymax=1.25,p.pos = 0.5,block = 0.4)
 gene.data.shet
 
@@ -3731,10 +3779,9 @@ plot.testis.del.shet <- ggplot(shet.genes.expr[sHET.val > 0.15], aes(as.factor(h
   scale_x_discrete(name = "Has a private DEL") +
   scale_y_continuous(name = "") +
   annotate("text", x = 1.5, y = 6, size = 4, label = if_else(plot.testis.del.shet.wilcox$p.value < 0.05, paste0("p = ", sprintf("%0.1e", plot.testis.del.shet.wilcox$p.value)),"p > 0.05")) +
-  ggtitle(expression(bold(s[HET]~`>`~0.15~Genes))) +
+  ggtitle(expression(bold(s[HET] >= 0.15~Genes))) +
   coord_flip() +
   theme
-  # theme(plot.title = element_text(size=12, face = "bold"))
 
 plot.testis.del.wilcox <- wilcox.test(log.mean ~ has.del, data = shet.genes.expr,alternative=c("less"))
 plot.testis.del <- ggplot(shet.genes.expr, aes(as.factor(has.del), log.mean, group = as.factor(has.del))) +
@@ -3745,7 +3792,6 @@ plot.testis.del <- ggplot(shet.genes.expr, aes(as.factor(has.del), log.mean, gro
   ggtitle("All Genes") +
   coord_flip() +
   theme
-  # theme(plot.title = element_text(size=12, face = "bold"))
 
 ## Has a Private PTV
 plot.testis.ptv.shet.wilcox <- wilcox.test(log.mean ~ has.ptv, data = shet.genes.expr[sHET.val > 0.15],alternative=c("less"))
@@ -3930,9 +3976,9 @@ ggsave("figures/supplement/SuppFig12.png",plot.predictions, dpi = 300, height = 
 
 ```{r fig.height=4, fig.width=8}
 
-cog.fit.plot <- ggplot(cog.raw) + geom_ribbon(aes(x=newiq, ymin=Mean-ci,ymax=Mean+ci),colour="grey",alpha=0.3) + geom_line(data = cog.raw[newiq<120],aes(x=newiq, y=Mean),colour="black", size = 1) + geom_line(aes(x = newiq, y=pred.log),colour="red", size = 0.8, linetype = 2) + scale_x_continuous(name = "IQ", limits=c(0,140)) + scale_y_continuous(name = "Average Children", limits=c(-0.1,2)) + scale_alpha_continuous(range=c(0,1)) + theme.figures.legend
+cog.fit.plot <- ggplot(cog.raw) + geom_ribbon(data = cog.raw[newiq<120],aes(x=newiq, ymin=Mean-ci,ymax=Mean+ci),colour="grey",alpha=0.3) + geom_line(data = cog.raw[newiq<120],aes(x=newiq, y=Mean),colour="black", size = 1) + geom_line(aes(x = newiq, y=pred.log),colour="red", size = 0.8, linetype = 2) + scale_x_continuous(name = "IQ", limits=c(0,140)) + scale_y_continuous(name = "Average Children", limits=c(-0.1,2)) + scale_alpha_continuous(range=c(0,1)) + theme.figures.legend
 
-child.fit.plot <- ggplot(childless.raw) + geom_ribbon(aes(x= iq,ymin=ci.lower,ymax=ci.upper),colour="grey",alpha=0.3) + geom_line(data = childless.raw[iq<120],aes(x=iq, y=inc.childlessness),colour="black", size = 1) + geom_line(aes(x = iq, y=pred.log.inv),colour="red", size = 0.8, linetype = 2) + scale_x_continuous(name = "IQ", limits=c(0,140)) + scale_y_continuous(name = "Increased Childlessness from Baseline", limits=c(-0.1,1)) + scale_alpha_continuous(range=c(0,1)) + theme.figures.legend
+child.fit.plot <- ggplot(childless.raw) + geom_ribbon(data = childless.raw[iq<120],aes(x= iq,ymin=ci.lower,ymax=ci.upper),colour="grey",alpha=0.3) + geom_line(data = childless.raw[iq<120],aes(x=iq, y=inc.childlessness),colour="black", size = 1) + geom_line(aes(x = iq, y=pred.log.inv),colour="red", size = 0.8, linetype = 2) + scale_x_continuous(name = "IQ", limits=c(0,140)) + scale_y_continuous(name = "Increased Childlessness from Baseline", limits=c(-0.1,1)) + scale_alpha_continuous(range=c(0,1)) + theme.figures.legend
 
 cog.fit.plots <- cog.fit.plot + child.fit.plot + plot_layout(nrow=1, guides = "collect") + plot_annotation(tag_levels = 'A')
 
@@ -4153,6 +4199,7 @@ write.table(supptable5,"figures/supplement/SuppTable5.tsv",col.names=T,row.names
 This documents all numbers in the manuscript printed in rough order. These are just replicated from above.
 
 ```{r Numbers Catalogue}
+
 ## Median age and range
 paste0("Median age                                     : ", UKBB.phenotype.data[,median(agePulse)], " (range ", UKBB.phenotype.data[,min(agePulse)], "-", UKBB.phenotype.data[,max(agePulse)],")")
 paste0("")
@@ -4188,8 +4235,8 @@ print(paste0("Number of male infertility genes: ", nrow(male.infertility.genes))
 no.male.fertility.plot[[1]][Sex == "Male" & variant.type == "META",paste0(Sex, " Fertility Gene OR=",sprintf("%0.2f",var.beta), " [95% CI ",sprintf("%0.2f",exp(log(var.beta)-(1.96*var.stderr))), "-",sprintf("%0.2f",exp(log(var.beta)+(1.96*var.stderr))),"]", " p=",if_else(var.p<=1e-2,sprintf("%0.1e",var.p),sprintf("%0.2f",var.p)))]
 paste0("")
 
-## Living with a Partner:
-fig.partner[[1]][Sex == "Male" & variant.type == "META",paste0(Sex, " Partner OR=",sprintf("%0.2f",var.beta), " [95% CI ",sprintf("%0.2f",exp(log(var.beta)-(1.96*var.stderr))), "-",sprintf("%0.2f",exp(log(var.beta)+(1.96*var.stderr))),"]", " p=",if_else(var.p<=1e-2,sprintf("%0.1e",var.p),sprintf("%0.2f",var.p)))]
+## Living with a Partner and having children:
+partner.beta.plot[[1]][sexPulse == "Male",paste0(sexPulse, " MH OR=",sprintf("%0.2f",beta), " [95% CI ",sprintf("%0.2f",exp(log(beta)-(1.96*std.error))), "-",sprintf("%0.2f",exp(log(beta)+(1.96*std.error))),"]", " p=",if_else(p.val<=1e-2,if_else(p.val <= 1e-100,"p ≤ 1e-100",sprintf("%0.1e",p.val)),sprintf("%0.2f",p.val)))]
 paste0("")
 
 ## Same Sex
@@ -4259,6 +4306,7 @@ paste0("Number of Individuals after filtering relateds : ", nrow(UKBB.phenotype.
 paste0("")
 
 ## Total CNVs:
+paste0("Number of raw CNVs: ",nrow(ukbb.annotated.cnvs.qcd[eid %in% has.cnv.data[has_cnvs==1,eid]]))
 quant.table <- data.table(table(ukbb.annotated.cnvs.qcd[filter.0.95.wes.support.score==T,ct]))
 paste0("Number of CNVs (Unfiltered Indiv)  : ",quant.table[,sum(N)], " (DEL: ", quant.table[V1 == "DEL",N], "; DUP: ", quant.table[V1 == "DUP",N],")")
 quant.table <- data.table(table(ukbb.annotated.cnvs.qcd[eid %in% samples.UKBB.cnv[,eid] & filter.0.95.wes.support.score==T,ct]))

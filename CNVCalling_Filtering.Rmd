@@ -1144,12 +1144,15 @@ Command to run is included here:
 ## Note: For UKBB scale data, you may need to provide > 20Gb of memory (via -Xmx/-Xms) to Java for it to get through this process!
 java -Xmx4G -jar /nfs/ddd0/eg15/CNVAnnotator.jar Merge -p interval.qcd.1101202.txt -o unfiltered -tmp tmp/ -h /lustre/scratch115/projects/ddd/users/eg15/WXS_10K/ref/hs37d5.fa -samples /lustre/scratch115/projects/interval_cnv/calling/reference/sample_file/samples_file.txt 
 
-java -Xmx4G -jar /nfs/ddd0/eg15/CNVAnnotator.jar Merge /
--p ukbb.qcd.11012020.txt /
--o unfiltered /
+java -Xmx20G -Xms20G -jar /nfs/ddd0/eg15/CNVAnnotator.jar Merge /
+-p merging/ukbb.qcd.11012020.txt /
+-o merging/ukbb.unfiltered /
 -tmp tmp/ /
--h hs37d5.fa /
+-h /lustre/scratch115/projects/ddd/users/eg15/WXS_10K/ref/hs37d5.fa /
 -samples samples_file.txt 
+
+## Remember -- this requires java11 now because of stupidity...
+/usr/bin/java -Xmx20G -Xms20G -jar /nfs/ddd0/eg15/CNVAnnotator.jar Merge -p merging/ukbb.qcd.04302020.txt -o merging/ukbb.unfiltered -tmp tmp/ -h /lustre/scratch115/projects/ddd/users/eg15/WXS_10K/ref/hs37d5.fa -samples reference/sample_file/samples_file.UKBB.txt 
 
 ## Attach INTERVAL ID to the end so we can use for impact annotation (not in this project).
 perl -ane 'chomp $_; print "$F[1]\t$F[2].CEL\n";' ALL_IDs.txt > translate.txt
@@ -1158,27 +1161,10 @@ perl -ane 'chomp $_; print "$F[1]\t$F[2].CEL\n";' ALL_IDs.txt > translate.txt
 
 # 6. VEP Annotation
 
-Annotating EVERY non-redundant raw CNV in batchAll.annotated.txt so that I can make the code easier to run on multiple cutoffs. This ensures that we dont have to make a different VCF file every single time. The final output file, `cnv_vep_parsed.sorted.bed` has a Eugene-formated single line per unique DEL/DUP interval with gene level-information. See individual scripts for actual details on what is included.
+Annotating EVERY locus in batchAll.annotated.txt. This ensures that we dont have to make a different VCF file every single time. The final output file, `cnv_vep_parsed.sorted.bed` has a Eugene-formated single line per unique DEL/DUP interval with gene level-information. See individual scripts for actual details on what is included.
 
 ```{bash, eval=FALSE}
 
-## Make a combined INTERVAL/UKBB file:
-cat batchAll.annotated.08032019.txt UKBB.annotated.txt > INTERVAL_and_UKBB.annotated.txt
-
-## Build vep input (Have to use script because VEP doesn't like CN0 annotation for DELs and bedtools sort + uniq doesn't actually remove duplicate intervals):
-./make_cnv_intervals.pl ../../merging/INTERVAL_and_UKBB.annotated.txt | bedtools sort -i stdin > cnv_for_vep.sorted.bed
-mkdir vep_input/; cd vep_input/
-split -a 3 --numeric-suffixes=1 -l 500 ../cnv_for_vep.sorted.bed cnv_for_vep.
-
-## VEP Command (using job array perl script
-## I am having trouble running a few of the jobs because of whole chromosome duplication/deletions. I think these should be removed anyway due to likely clonal expansion? They very well may be real but likely only a blood phenotype? Need to account for this in the script here:
-bsub -q normal -M 10000 -o grid_out/cnv_vep.%I.out -J 'VEP[1-856]' './job_array.pl'
-
-## Merge pLI with DDG2P, Proteomics, Fetal Brain, and VEP annotation
-perl -e 'for (1..856) {my $num = sprintf("%03d", $_); print "./attach_pli.pl vep_input/vep_annotation.$num.txt > vep_input/vep_parsed.$num.txt;\n";}' | bash
-cat vep_input/vep_parsed.*.txt | bedtools sort -i stdin > cnv_vep_parsed.sorted.bed
-
-## ALTERNATE - Based on merged CNVs:
 cat interval.unfiltered.qcdMerged.txt ukbb.unfiltered.qcdMerged.txt > INTERVAL_and_ukbb.annotated.txt
 ./make_cnv_intervals.pl ../../merging/INTERVAL_and_ukbb.annotated.txt | bedtools sort -i stdin > cnv_for_vep.sorted.bed
 mkdir vep_input/; cd vep_input/

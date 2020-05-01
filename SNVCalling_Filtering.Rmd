@@ -11,28 +11,28 @@ This Markdown documents the annotation and extraction of SNV and InDel variants 
 
 First step to analyse UK Biobank WES data is to actually acquire the variant files themselves.
 
-# 2. Generating Annotations Sources
+# 2. Generating Annotation Sources
 
 This process is slightly complicated because of the possible sources of data that I am accounting for in other projects. I have provided here a simplified version of this annotation for Hg38 UK Biobank data.
 
 *Note:* All annotations below are done *without* the "chr" prefix!
 
-For each of the below annotations I need to generate GRCh38 versions. Annotations are stored in the root folder `annotations/hg38` with the corresponding name in brackets below:
+For each of the below annotations I need to generate GRCh38 versions. Annotations are stored in the root folder `annotations/hg38` with the corresponding directory name in brackets below:
 
 * CADD scores [cadd]
 ** We also have to generate CADD scores for variants not included in their default build 
 ** mostly limited to InDels.
 * gnomAD allele frequencies [gnomad] -- Note that I am using AF_nfe, which is non-Finnish European AF (I used to use AF_POPMAX but this doesn't exist anymore in b38 of gnomad (?))
 * MPC scores [mpc]
-** Have to lift this over the hg38
+** Have to lift this over to hg38
 * PEXT scores [pext]
-** Have to lift this over the hg38
+** Have to lift this over to hg38
 
 I also need to generate annotations for each VCF as variant loci/values will not be identical. These annotations are stored alongside the vcf file, with a changed suffix like:
 
 * VEP annotations
 * VQSR annotations
-** For the purposes of UKBB this amounts to a 'fake' list of VQSR values for each variant that 
+** For the purposes of UKBB this amounts to a 'fake' list of VQSR values for each variant that pass default VQSR filtering in the java pipeline
 * Supplemental CADD annotations
 
 For VEP, I am using my own local build of v97, located (natively) in `/lustre/scratch115/teams/hurles/users/eg15/INTERVAL/snv_cognition/ensembl-vep/` and sym-linked to `$HOME/EugeneTools/`. I independently downloaded cache files for both genome builds. The most complicated part was building loftee for GRCh38 which is located in `.vep/Plugins/loftee_hg38/` (hg19 was not an issue other than the note on the GERP db below, and is located at `.vep/Plugs/loftee_hg19/`). Each genome build has a separate folder in this directory for necessary files:

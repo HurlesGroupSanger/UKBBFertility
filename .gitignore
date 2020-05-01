@@ -1,6 +1,6 @@
 # Nothing from our testing folder:
 rawdata_test/
-rawdata.testing.tar.gz
+rawdata.testing*.tar.gz
 rawdata_real/
 
 # or an individuals unpacked rawdata folder:
