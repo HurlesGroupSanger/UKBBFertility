@@ -9,20 +9,36 @@ This Markdown documents the annotation and extraction of SNV and InDel variants 
 
 # 1. Required Exome Variant Files
 
-First step to analyse UK Biobank WES data is to actually acquire the variant files themselves.
+First step to analyse UK Biobank WES data is to actually acquire the variant files themselves. Please see [this page](http://biobank.ndph.ox.ac.uk/showcase/field.cgi?id=23160) for additional information on accquiring required files. Please note that conversion to VCF format requires [PLINKv1.9 or PLINKv2](https://www.cog-genomics.org/plink2) and [tabix](http://www.htslib.org/doc/tabix.html). Roughly, files were accquired and processed into a VCF format file with the following commands:
+
+```{bash Get UKBB VCF, eval = F}
+
+## This downloads a set of plink binary format files: ukb_efe_chr1_v1.bed, ukb44165_efe_chr1_v1_s49959.fam, ukb_fe_exm_chrall_v1.bim
+## Note that you must have your keyfile provided by UKB in the same directory/pointed to with the -a flag
+ukbgene efe -c1 ## bed file
+ukbgene efe -c1 -m ## fam file
+curl -O biobank.ndph.ox.ac.uk/showcase/showcase/auxdata/ukb_fe_exm_chrall_v1.bim ## bim file
+
+## This converts downloaded plink files to a VCF format file useable by this code:
+plink --bed ukb_efe_chr1_v1.bed --bim ukb_fe_exm_chrall_v1.bim --fam ukb44165_efe_chr1_v1_s49959.fam --out ukbb_plink.vcf --recode vcf
+
+## And bgzip and index:
+bgzip ukbb_plink.vcf
+tabix -p vcf ukbb_plink.vcf.gz
+```
 
 # 2. Generating Annotation Sources
 
-This process is slightly complicated because of the possible sources of data that I am accounting for in other projects. I have provided here a simplified version of this annotation for Hg38 UK Biobank data.
+This process is slightly complicated because I have written this code to be project-agnostic and therefore makes the possible sources of data that I am accounting for more complicated. I have provided here a simplified version of this annotation for Hg38 UK Biobank data, but this code should be fairly adaptable to other sequencing formats.
 
 *Note:* All annotations below are done *without* the "chr" prefix!
 
 For each of the below annotations I need to generate GRCh38 versions. Annotations are stored in the root folder `annotations/hg38` with the corresponding directory name in brackets below:
 
 * CADD scores [cadd]
-** We also have to generate CADD scores for variants not included in their default build 
-** mostly limited to InDels.
-* gnomAD allele frequencies [gnomad] -- Note that I am using AF_nfe, which is non-Finnish European AF (I used to use AF_POPMAX but this doesn't exist anymore in b38 of gnomad (?))
+** We also have to generate CADD scores for variants not included in the default build.
+** I believe this is completely limited to InDels.
+* gnomAD allele frequencies [gnomad] -- Note that I am using AF_nfe, which is non-Finnish European AF
 * MPC scores [mpc]
 ** Have to lift this over to hg38
 * PEXT scores [pext]

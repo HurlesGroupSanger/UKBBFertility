@@ -11,18 +11,15 @@ output: html_document
 
 This document contains data UKBB and comparisons between and within this data to the trait of interest, Fertility. If using data produced by this repo, please cite [our manuscript](https:tbd).
 
-*BIG Note:* The first part of this document involves running scripts to generate text files required for downstream analysis. _PLEASE_ start there and make sure all scripts ran successfully. All scripts for this section are available in the folder `./scripts/`. These scripts _will not_ run as part of this document. There is an additional resource that you need to download -- the OMIM morbid map -- which requires registration. See the section [on OMIM](#disease_genes) below.
+*BIG Note:* The first part of this document involves running scripts to generate text files required for downstream analysis. _PLEASE_ start there and make sure all scripts ran successfully. All scripts for this section are available in the folder `./scripts/` and _will not_ run as part of this document. There are two additional resources that you need to download -- the OMIM morbid map, which requires registration and DDG2P. See the section [on disease genes](#disease_genes) below.
 
-This script is agnostic to the UKBiobank application number. You should be able to download a bulk phenotype file and, if it contains the correct phenotypes as referred to in the manuscript and in the file `rawdata/phenofiles/fields_to_extract.txt`, you should be able to reproduce our data and figures. 
+*Second BIG Note*: You also need to have access to UKBiobank, but this script is agnostic to the UKBiobank application number. You should be able to download a bulk phenotype file and, if it contains the correct phenotypes as referred to in the manuscript and in the file `rawdata/phenofiles/fields_to_extract.txt`, you should be able to reproduce our data and figures. 
 
 ## 1A. Libraries
 
 ```{r setup}
 
-knitr::opts_chunk$set(
-	echo = TRUE,
-)
-
+knitr::opts_chunk$set(echo = TRUE, message = FALSE)
 library(biomaRt) ## Get gene lists we need
 library(readxl) ## Read Supplemental Excel tables
 library(data.table) ## Better than data.frame
@@ -313,7 +310,7 @@ rm(fluid.intel.table)
 
 Analyzing fields for Educational Attainment.
 
-6138-0/1/2 includes educational attainment measures. Looks like there are a max of 5 values for each instance (to accomodate multiple levels of qualifications). At this point I think we just try a binary for did/did not complete a college degree, which is high correlated accoring to [this](https://academic.oup.com/sf/article-abstract/92/1/109/2235872?redirectedFrom=fulltext) article (cannot actually read it as is behind a paywall, but was cited in [this](https://static-content.springer.com/esm/art%3A10.1038%2Fnature17671/MediaObjects/41586_2016_BFnature17671_MOESM48_ESM.pdf) study as an explanation for why they don't care about years schooling vs. college education.
+6138-0/1/2 includes educational attainment measures. There are a max of 5 values for each instance (to accomodate multiple levels of qualifications). Weuse a binary for did/did not complete a college degree, which is high correlated with years of education according to [this](https://academic.oup.com/sf/article-abstract/92/1/109/2235872?redirectedFrom=fulltext) article (cannot actually read it as is behind a paywall, but was cited in [this](https://static-content.springer.com/esm/art%3A10.1038%2Fnature17671/MediaObjects/41586_2016_BFnature17671_MOESM48_ESM.pdf) study as an explanation for why they don't care about years schooling vs. college education.
 
 ```{r Educational Attainment, fig.height=3, fig.width=6}
 
@@ -389,7 +386,7 @@ rm(email.data)
 
 ### ICD 10 Coding
 
-The ICD-10 codes that I have used and their equivalancies to the MHQ section are listed in the perl script below. For the traits covered in [Power et al.](https://jamanetwork.com/journals/jamapsychiatry/article-abstract/1390257) I have stuck with their exact codes to enable replication, for the others I have googled a bit and tried to do my best as a non-clinician. Most seem reasonably straightforward...
+The ICD-10 codes that I have used and their equivalancies to the MHQ section are listed in the perl script below. For the traits covered in [Power et al.](https://jamanetwork.com/journals/jamapsychiatry/article-abstract/1390257) I have stuck with their exact codes to enable replication, for the others I have searched for equivalents using various articles on those particular subjects.
 
 This set of data needs to be processed in two steps, as I use perl to process the actual phenotypes (it's much easier than in R). Need to first print out a text file of the raw phenotypes I need, process it with Perl, and then read back in and add to the final phenotype table.
 
@@ -717,23 +714,6 @@ scripts/matcher.pl -file1 rawdata/genelists/hg19.genes.txt -file2 rawdata/geneli
 
 ```
 
-### Cleanup
-
-Clean up intermediate files:
-
-```{bash}
-
-# Cleanup:
-rm rawdata/genelists/unmatched.tsv
-rm rawdata/genelists/unmatched.2.tsv
-rm rawdata/genelists/hg38.genes.alt_removed.tsv
-rm rawdata/genelists/ENSG.matched.tsv
-rm rawdata/genelists/hgnc.matched.tsv
-rm rawdata/genelists/shet.processed.weghorn.txt
-rm rawdata/genelists/shet.hgnc_noENSG.txt
-rm rawdata/genelists/hg19.genes.alt_removed.tsv
-```
-
 ## 4B. Load Gene Lists For Phenotype Testing
 
 ### Generic Lists
@@ -775,7 +755,7 @@ gene.lists["highsHET"] = list(shet.genes[sHET.val >= 0.15,hg19.GENE])
 
 #### UKBB Unmapped Regions
 
-It was recently identified that the UKBB data was not aligned properly and as such has several genes without any variants... Purpose of this code is to check which genes these are based on a list of "affected" baits given by the UKBB team.
+It was [recently identified](https://onlinelibrary.wiley.com/doi/full/10.1111/ahg.12383) that the UKBB data was not aligned properly and as such has several genes without any variants. Purpose of this code is to check which genes these are based on a list of "affected" baits given by the UKBB team.
 
 **Note**: This code requires bedtools to be installed and in your PATH.
 
@@ -1366,7 +1346,7 @@ sex.burden.calc <- function(t) {
 
   sex.specific <- variant.counts[allele.freq == 0 & type == t,c("sample_id","product_sHET")]
   sex.specific <- merge(sex.specific,UKBB.phenotype.data[,c("eid","sexPulse")],by.x="sample_id",by.y="eid")
-  print(nrow(sex.specific))
+  print(paste0("Number of Individuals w/",t,"s :", nrow(sex.specific)))
 
   sex.specific[,product_sHET.log:=log10(product_sHET)]
   ## Can do two tests, proportion in each sex with SOME sHET value, and actual testing burden of sHET
@@ -1388,7 +1368,9 @@ sex.burden.calc <- function(t) {
 }
 
 format.sex.burden.DEL <- sex.burden.calc("DEL")
+format.sex.burden.DEL
 format.sex.burden.PTV <- sex.burden.calc("LOF_HC")
+format.sex.burden.PTV
 ```
 
 # 5. Variant Burden Impact on Traits
@@ -1535,7 +1517,7 @@ plot.result <- function(data, binary, num.tests, ymin, ymax, y.lab) {
   plottable[,sex:=factor(sex,levels=c(1,2,3),labels=c("Male","Female","Both"))]
   
   betas <- ggplot(plottable,aes(x=gene.list.2,y=var.beta,group=interaction(sex,variant.type,maf),colour=variant.type,linetype=as.factor(maf),shape=as.numeric(sex)+16)) +
-    geom_hline(aes(yintercept=yline),type=7,colour="red") +
+    geom_hline(aes(yintercept=yline),linetype=7,colour="red") +
     geom_point(position=position_dodge(width=1)) +
     scale_x_discrete(name="") +
     scale_y_continuous(name=ylab,limits = c(ymin,ymax)) +
@@ -1779,7 +1761,7 @@ for (i in c(40,50,60)) {
   
   results.fertility.age[,c("var.beta","var.stderr","var.p","n.var","n.indvs"):=run.regression(maf,gene.list,y.var,sex,variant.type,T),by=1:nrow(results.fertility.age)]
   
-  res.age <- bind_rows(res.age,results.fertility.age[,c("var.beta","var.stderr","y.var","variant.type","age","n.indvs","var.p")])
+  res.age <- rbind(res.age,results.fertility.age[,c("var.beta","var.stderr","y.var","variant.type","age","n.indvs","var.p")])
   
   ## Restore the original file and delete the backup:
   variant.counts <- copy(variant.counts.backup)
@@ -1800,7 +1782,7 @@ for (i in c(40,50,60)) {
                           sm = "OR",
                           data = meta.table)
 
-    res.age <- bind_rows(res.age,data.table(var.beta = meta.analy$TE.fixed,var.stderr = meta.analy$seTE.fixed,y.var = a,variant.type = "META",age = i, n.indvs=meta.table[,sum(n.indvs)],var.p=meta.analy$pval.fixed))
+    res.age <- rbind(res.age,data.table(var.beta = meta.analy$TE.fixed,var.stderr = meta.analy$seTE.fixed,y.var = a,variant.type = "META",age = i, n.indvs=meta.table[,sum(n.indvs)],var.p=meta.analy$pval.fixed))
     
   }
   
@@ -1817,7 +1799,7 @@ meta.analy.male <- metagen(var.beta,
                           sm = "OR",
                           data = male)
 
-male <- bind_rows(male,data.table(var.beta = meta.analy.male$TE.fixed,var.stderr = meta.analy.male$seTE.fixed,y.var = "children.fathered",variant.type = "META",age = "ALL", n.indvs=male[,sum(n.indvs)],var.p=meta.analy.male$pval.fixed))
+male <- rbind(male,data.table(var.beta = meta.analy.male$TE.fixed,var.stderr = meta.analy.male$seTE.fixed,y.var = "children.fathered",variant.type = "META",age = "ALL", n.indvs=male[,sum(n.indvs)],var.p=meta.analy.male$pval.fixed))
 
 female <- results.fertility[sex == 2 & maf == 0 & (variant.type == "DEL" | variant.type == "LOF_HC"),c("var.beta","var.stderr","y.var","variant.type","n.indvs","var.p")]
 female[,age:="ALL"]
@@ -1828,9 +1810,9 @@ meta.analy.female <- metagen(var.beta,
                           sm = "OR",
                           data = female)
 
-female <- bind_rows(female,data.table(var.beta = meta.analy.female$TE.fixed,var.stderr = meta.analy.female$seTE.fixed,y.var = "live.births",variant.type = "META",age = "ALL",n.indvs=female[,sum(n.indvs)],var.p=meta.analy.female$pval.fixed))
+female <- rbind(female,data.table(var.beta = meta.analy.female$TE.fixed,var.stderr = meta.analy.female$seTE.fixed,y.var = "live.births",variant.type = "META",age = "ALL",n.indvs=female[,sum(n.indvs)],var.p=meta.analy.female$pval.fixed))
 
-res.age <- bind_rows(res.age,female,male)
+res.age <- rbind(res.age,female,male)
 
 res.age[,var.ci.upper:=exp(var.beta + (1.96*var.stderr))]
 res.age[,var.ci.lower:=exp(var.beta - (1.96*var.stderr))]
@@ -2327,11 +2309,11 @@ model.fertility[,sexPulse:=factor(sex,levels=c(1,2),labels=c("Male","Female"))]
 
 paste0("Contribution of sHET to Fitness (sex averaged): ",
        sprintf("%0.1f",((1-model.fertility[shet == 1,mean(ratio_mid)])*100)),
-       " (",
+       "% (",
        sprintf("%0.1f",((1-model.fertility[shet == 1,mean(ratio_upper)])*100)),
        " - ",
        sprintf("%0.1f",((1-model.fertility[shet == 1,mean(ratio_lower)])*100)),
-       ")")
+       "%)")
 ```
 
 ## 6D. Function to Calculate Increased Childlessness Due to Partner at Home/EA
@@ -2430,7 +2412,7 @@ calc.childlessness <- function(glm.result, y.var.result, y.var) {
         model.sim[,mean.childlessness:=1-sim.indv[,mean(children.binary)]]
         model.sim[,mean.children:=sim.indv[,mean(num.children)]]
         model.sim[,ratio:=mean.children/base.fertilities[sex == s & inc.zero == T, fertility]]
-        model <- bind_rows(model, model.sim)
+        model <- rbind(model, model.sim)
       }
       
     }
@@ -2469,7 +2451,7 @@ beta.plot <- ggplot(sex.diff.partner, aes(sexPulse,beta,colour=sexPulse)) +
   theme.legend
 
 ## This grabs the actual fit values from the LM to plot
-post.lm.dt <- bind_rows(sex.diff.partner[1,data][[1]],sex.diff.partner[2,data][[1]])
+post.lm.dt <- rbind(sex.diff.partner[1,data][[1]],sex.diff.partner[2,data][[1]])
 post.lm.dt[,sexPulse:=factor(sexPulse,levels=c(1,2),labels=c("Male","Female"))]
 post.lm.dt[,dummy:=1]
 
@@ -2510,11 +2492,11 @@ model.partner <- data.table(pivot_wider(model.partner,
 
 paste0("Contribution of Partner at Home to Fitness: ",
        sprintf("%0.1f",(((1 - model.partner[shet == 1 & sex == 1,ratio_mid]) / (1 - model.fertility[shet == 1 & sex == 1,ratio_mid]))*100)),
-       " (",
+       "% (",
        sprintf("%0.1f",(((1 - model.partner[shet == 1 & sex == 1,ratio_upper]) / (1 - model.fertility[shet == 1 & sex == 1,ratio_upper]))*100)),
        " - ",
        sprintf("%0.1f",(((1 - model.partner[shet == 1 & sex == 1,ratio_lower]) / (1 - model.fertility[shet == 1 & sex == 1,ratio_lower]))*100)),
-       ")")
+       "%)")
 ```
 
 ## 6F. Fertility + Educational Attainment
@@ -2538,12 +2520,12 @@ sex.diff.ea[,sexPulse:=factor(sex,levels=c(1,2),labels=c("Male","Female"))]
 beta.plot <- ggplot(sex.diff.ea, aes(sexPulse,beta,colour=sexPulse)) + 
   geom_point() + 
   geom_errorbar(aes(ymin=var.ci.lower,ymax=var.ci.upper)) + 
-  scale_y_continuous(limits=c(-0.1,1)) + 
-  scale_y_continuous(name="OR") + 
+  scale_y_continuous(name="OR",limits=c(-0.1,1)) + 
+  sex.colours.colour +
   theme.legend
 
 ## This grabs the actual fit values from the LM to plot
-post.lm.dt <- bind_rows(sex.diff.ea[1,data][[1]],sex.diff.ea[2,data][[1]])
+post.lm.dt <- rbind(sex.diff.ea[1,data][[1]],sex.diff.ea[2,data][[1]])
 post.lm.dt[,sexPulse:=factor(sexPulse,levels=c(1,2),labels=c("Male","Female"))]
 post.lm.dt[,dummy:=1]
 
@@ -2558,6 +2540,7 @@ mean.plot <- ggplot(means,aes(as.factor(completed.college),mean,group=sexPulse,c
   geom_errorbar(aes(ymin=mean-ci,ymax=mean+ci),width=0,position=position_dodge(0.5)) +
   scale_y_continuous(name="Births Corrected For\nAge & PC1..10") +
   scale_x_discrete(name = "Completed College",labels=c("False","True")) +
+  sex.colours.colour +
   theme.legend
 
 ## Use patchwork to mash them together
@@ -2603,10 +2586,12 @@ sex.diff.fluidintel[,sexPulse:=factor(sex,levels=c(1,2),labels=c("Male","Female"
 beta.plot <- ggplot(sex.diff.fluidintel, aes(sexPulse,beta,colour=sexPulse)) +
   geom_point() + 
   geom_errorbar(aes(ymin=var.ci.lower,ymax=var.ci.upper)) + 
+  scale_y_continuous(name="OR", limits=c(0.8,1.5)) +
+  sex.colours.colour +
   theme.legend
 
 ## This grabs the actual fit values from the LM to plot
-post.lm.dt <- bind_rows(sex.diff.fluidintel[1,data][[1]],sex.diff.fluidintel[2,data][[1]])
+post.lm.dt <- rbind(sex.diff.fluidintel[1,data][[1]],sex.diff.fluidintel[2,data][[1]])
 post.lm.dt[,sexPulse:=factor(sexPulse,levels=c(1,2),labels=c("Male","Female"))]
 post.lm.dt[,fluid.intel.binned:=cut(fluid.intel,breaks=14)]
 post.lm.dt[,dummy:=1]
@@ -2622,6 +2607,7 @@ mean.plot <- ggplot(means,aes(fluid.intel.binned,mean,group=sexPulse,colour=sexP
   geom_errorbar(aes(ymin=mean-ci,ymax=mean+ci),width=0,position=position_dodge(0.5)) +
   scale_y_continuous(name="Births Corrected For\nAge & PC1..10") +
   scale_x_discrete(name = "Fluid Intel Score",labels = c(0:29)) +
+  sex.colours.colour +
   theme.legend
 
 ## Use patchwork to mash them together
@@ -2892,13 +2878,14 @@ model.cog[,sexPulse:=factor(sex,levels=c(1,2),labels=c("Male","Female"))]
 
 paste0("Contribution of Cognition to Fitness: ",
        sprintf("%0.1f",(((1 - model.cog[shet == 1 & sex == 1,ratio_mid]) / (1 - model.fertility[shet == 1 & sex == 1,ratio_mid]))*100)),
-       " (",
+       "% (",
        sprintf("%0.1f",(((1 - model.cog[shet == 1 & sex == 1,ratio_upper]) / (1 - model.fertility[shet == 1 & sex == 1,ratio_upper]))*100)),
        " - ",
        sprintf("%0.1f",(((1 - model.cog[shet == 1 & sex == 1,ratio_lower]) / (1 - model.fertility[shet == 1 & sex == 1,ratio_lower]))*100)),
-       ")")
+       "%)")
 
-paste0("Predicted drop in IQ for sHET = 1 male: " ,sprintf("%0.2f", model.cog[shet == 1 & sex == 1,100 - expected.iq_mid]))
+paste0("Predicted drop in IQ for sHET = 1 male  : " ,sprintf("%0.2f", model.cog[shet == 1 & sex == 1,100 - expected.iq_mid]))
+paste0("Predicted drop in IQ for sHET = 1 female: " ,sprintf("%0.2f", model.cog[shet == 2 & sex == 1,100 - expected.iq_mid]))
 ```
 
 ## 6G. Fertility + Mental Health
@@ -2922,11 +2909,12 @@ sex.diff.mhq[,sexPulse:=factor(sex,levels=c(1,2),labels=c("Male","Female"))]
 beta.plot <- ggplot(sex.diff.mhq, aes(sexPulse,beta,colour=sexPulse)) + 
   geom_point() + 
   geom_errorbar(aes(ymin=var.ci.lower,ymax=var.ci.upper)) + 
-  scale_y_continuous(name="Beta",limits=c(-0.1,1)) + 
+  scale_y_continuous(name="OR",limits=c(-0.1,1)) + 
+  sex.colours.colour +
   theme.legend
 
 ## This grabs the actual fit values from the LM to plot
-post.lm.dt <- bind_rows(sex.diff.mhq[1,data][[1]],sex.diff.mhq[2,data][[1]])
+post.lm.dt <- rbind(sex.diff.mhq[1,data][[1]],sex.diff.mhq[2,data][[1]])
 post.lm.dt[,sexPulse:=factor(sexPulse,levels=c(1,2),labels=c("Male","Female"))]
 post.lm.dt[,dummy:=1]
 
@@ -2941,6 +2929,7 @@ mean.plot <- ggplot(means,aes(as.factor(ganna.binary),mean,group=sexPulse,colour
   geom_errorbar(aes(ymin=mean-ci,ymax=mean+ci),width=0,position=position_dodge(0.5)) +
   scale_y_continuous(name="Births Corrected For\nAge & PC1..10") +
   scale_x_discrete(name = "Has Power et al. Disorder",labels=c("False","True")) +
+  sex.colours.colour +
   theme.legend
 
 ## Use patchwork to mash them together
@@ -3090,11 +3079,11 @@ rm(scizo.inc, asd.inc, bipolar.inc)
 
 paste0("Contribution of MHTs to Fitness: ",
        sprintf("%0.1f",(((1 - model.mhq[shet == 1 & sex == 1,ratio_mid]) / (1 - model.fertility[shet == 1 & sex == 1,ratio_mid]))*100)),
-       " (",
+       "% (",
        sprintf("%0.1f",(((1 - model.mhq[shet == 1 & sex == 1,ratio_upper]) / (1 - model.fertility[shet == 1 & sex == 1,ratio_upper]))*100)),
        " - ",
        sprintf("%0.1f",(((1 - model.mhq[shet == 1 & sex == 1,ratio_lower]) / (1 - model.fertility[shet == 1 & sex == 1,ratio_lower]))*100)),
-       ")")
+       "%)")
 ```
 
 ## 6H. Fertility + Household Income
@@ -3120,12 +3109,12 @@ sex.diff.hhi[,sexPulse:=factor(sex,levels=c(1,2),labels=c("Male","Female"))]
 beta.plot <- ggplot(sex.diff.hhi, aes(sexPulse,beta,colour=sexPulse)) +
   geom_point() +
   geom_errorbar(aes(ymin=var.ci.lower,ymax=var.ci.upper)) +
-  scale_y_continuous(limits=c(-0.1,1)) +
-  scale_y_continuous(name="OR") +
+  scale_y_continuous(name="OR",limits=c(-0.1,1)) +
+  sex.colours.colour +
   theme.legend
 
 ## This grabs the actual fit values from the LM to plot
-post.lm.dt <- bind_rows(sex.diff.hhi[1,data][[1]],sex.diff.hhi[2,data][[1]])
+post.lm.dt <- rbind(sex.diff.hhi[1,data][[1]],sex.diff.hhi[2,data][[1]])
 post.lm.dt[,sexPulse:=factor(sexPulse,levels=c(1,2),labels=c("Male","Female"))]
 post.lm.dt[,household.income.binned:=cut(household.income,breaks=c(seq(0,5,by=1)))]
 post.lm.dt[,dummy:=1]
@@ -3141,6 +3130,7 @@ mean.plot <- ggplot(means,aes(household.income.binned,mean,group=interaction(sex
   geom_errorbar(aes(ymin=mean-ci,ymax=mean+ci),width=0,position=position_dodge(0.5)) +
   scale_y_continuous(name="Births Corrected For\nAge & PC1..10") +
   scale_x_discrete(name = "Household Income Bin",labels = c(0:29)) +
+  sex.colours.colour +
   theme.legend
 
 ## Use patchwork to mash them together
@@ -3171,12 +3161,12 @@ sex.diff.same.sex[,sexPulse:=factor(sexPulse,levels=c(1,2),labels=c("Male","Fema
 beta.plot <- ggplot(sex.diff.same.sex, aes(sexPulse,beta,colour=sexPulse)) +
   geom_point() +
   geom_errorbar(aes(ymin=var.ci.lower,ymax=var.ci.upper)) + 
-  scale_y_continuous(limits=c(-0.1,1)) + 
-  scale_y_continuous(name="OR") + 
+  scale_y_continuous(name="OR",limits=c(-0.1,1)) + 
+  sex.colours.colour +
   theme.legend
 
 ## This grabs the actual fit values from the LM to plot
-post.lm.dt <- bind_rows(sex.diff.same.sex[1,data][[1]],sex.diff.same.sex[2,data][[1]])
+post.lm.dt <- rbind(sex.diff.same.sex[1,data][[1]],sex.diff.same.sex[2,data][[1]])
 post.lm.dt[,sexPulse:=factor(sexPulse,levels=c(1,2),labels=c("Male","Female"))]
 post.lm.dt[,dummy:=1]
 
@@ -3191,6 +3181,7 @@ mean.plot <- ggplot(means,aes(as.factor(same.sex),mean,group=sexPulse,colour=sex
   geom_errorbar(aes(ymin=mean-ci,ymax=mean+ci),width=0,position=position_dodge(0.5)) +
   scale_y_continuous(name="Births Corrected For\nAge & PC1..10") +
   scale_x_discrete(name = "Has Had Same Sex Behaviour",labels=c("False","True")) +
+  sex.colours.colour +
   theme.legend
 
 ## Use patchwork to mash them together
@@ -3269,8 +3260,9 @@ make.meta.table <- function(data, is.linear,
     plot.breaks <- c(seq(0,ymin,by=-1 * b),seq(0,ymax,by=b))
     plot.breaks <- plot.breaks[plot.breaks != block]
 
-    meta.table <- bind_rows(data[maf == allele.freq & (variant.type == "DEL" | variant.type == "LOF_HC"),c("variant.type","sex","var.beta","var.stderr","var.p","n.var","n.indvs")],
-                          meta.result[maf == allele.freq,c("variant.type","sex","var.beta","var.stderr","var.p")])
+    meta.table <- rbind(data[maf == allele.freq & (variant.type == "DEL" | variant.type == "LOF_HC"),c("variant.type","sex","var.beta","var.stderr","var.p","n.var","n.indvs")],
+                          meta.result[maf == allele.freq,c("variant.type","sex","var.beta","var.stderr","var.p")],
+                        fill=TRUE)
     
     meta.table[,var.ci.upper:=var.beta + (1.96*var.stderr)]
     meta.table[,var.ci.lower:=var.beta - (1.96*var.stderr)]
@@ -3282,8 +3274,9 @@ make.meta.table <- function(data, is.linear,
     plot.breaks <- c(seq(1,ymin,by=-1 * b),seq(1,ymax,by=b))
     plot.breaks <- plot.breaks[plot.breaks != block]
     
-    meta.table <- bind_rows(data[maf == allele.freq & (variant.type == "DEL" | variant.type == "LOF_HC"),c("variant.type","sex","var.beta","var.stderr","var.p","n.var","n.indvs")],
-                          meta.result[maf == allele.freq ,c("variant.type","sex","var.beta","var.stderr","var.p")])
+    meta.table <- rbind(data[maf == allele.freq & (variant.type == "DEL" | variant.type == "LOF_HC"),c("variant.type","sex","var.beta","var.stderr","var.p","n.var","n.indvs")],
+                          meta.result[maf == allele.freq ,c("variant.type","sex","var.beta","var.stderr","var.p")],
+                        fill=TRUE)
     
     meta.table[,var.ci.upper:=exp(var.beta + (1.96*var.stderr))]
     meta.table[,var.ci.lower:=exp(var.beta - (1.96*var.stderr))]
@@ -3310,8 +3303,6 @@ make.meta.table <- function(data, is.linear,
   } else {
     add.theme <- theme(axis.title.x=element_blank(),axis.text.x=element_blank(), panel.grid.major.y = element_blank())
   }
-  
-  
   
   plot <- ggplot(meta.table,aes(variant.type,var.beta,group=Sex,colour=Sex)) +
     geom_hline(aes(yintercept=if_else(is.linear==T,0, 1)),colour="red",linetype=2,size=1) +
@@ -3615,7 +3606,7 @@ rm(quant.table)
 
 #### Figure 2.
 
-SNV Counts Per Individual
+SNV Counts Per Individual.
 
 ```{r fig.height=5, fig.width=8.5}
 
@@ -4049,7 +4040,7 @@ plot.children <- ggplot(agePlot,aes(agePulse,mean.births,group=y.var,colour=sexP
 ## Plot of mean childlessness
 plot.childlessness <- ggplot(agePlot,aes(agePulse,mean.childlessness*100,group=y.var,colour=sexPulse)) + geom_point(position=position_dodge(0.5)) + geom_errorbar(aes(ymin=(mean.childlessness-ci.childlessness)*100,ymax=(mean.childlessness+ci.childlessness)*100),width=0.1,position=position_dodge(0.5)) + xlab("Age") + ylab("% Childless") + sex.colours.colour + theme.figures.legend
 
-## Use pathwork to mash them together
+## Use patchwork to mash them together
 children.plots <- plot.children / plot.childlessness + plot_layout(guides="collect") + plot_annotation(tag_levels = 'A')
 children.plots
 
@@ -4248,11 +4239,11 @@ paste0("")
 paste0("Number of Fluid Intel Indv: ", sum(fig.cog[[1]][variant.type == "META",n.indvs]), " (Male: ",fig.cog[[1]][Sex == "Male" & variant.type == "META",n.indvs],"; Female: ", fig.cog[[1]][Sex == "Female" & variant.type == "META",n.indvs], ")")
 paste0("Contribution of Cognition to Fitness: ",
        sprintf("%0.1f",(((1 - model.cog[shet == 1 & sex == 1,ratio_mid]) / (1 - model.fertility[shet == 1 & sex == 1,ratio_mid]))*100)),
-       " (",
+       "% (",
        sprintf("%0.1f",(((1 - model.cog[shet == 1 & sex == 1,ratio_upper]) / (1 - model.fertility[shet == 1 & sex == 1,ratio_upper]))*100)),
        " - ",
        sprintf("%0.1f",(((1 - model.cog[shet == 1 & sex == 1,ratio_lower]) / (1 - model.fertility[shet == 1 & sex == 1,ratio_lower]))*100)),
-       ")")
+       "%)")
 paste0("")
 
 ## UKBB Biases
@@ -4273,31 +4264,31 @@ paste0("")
 no.mh.patients.plot[[1]][variant.type == "META",paste0(Sex," No MH Patients OR=",sprintf("%0.2f",var.beta), " [95% CI ",sprintf("%0.2f",exp(log(var.beta)-(1.96*var.stderr))), "-",sprintf("%0.2f",exp(log(var.beta)+(1.96*var.stderr))),"]", " p=",if_else(var.p<=1e-2,sprintf("%0.1e",var.p),sprintf("%0.2f",var.p)))]
 paste0("Contribution of MHTs to Fitness: ",
        sprintf("%0.1f",(((1 - model.mhq[shet == 1 & sex == 1,ratio_mid]) / (1 - model.fertility[shet == 1 & sex == 1,ratio_mid]))*100)),
-       " (",
+       "% (",
        sprintf("%0.1f",(((1 - model.mhq[shet == 1 & sex == 1,ratio_upper]) / (1 - model.fertility[shet == 1 & sex == 1,ratio_upper]))*100)),
        " - ",
        sprintf("%0.1f",(((1 - model.mhq[shet == 1 & sex == 1,ratio_lower]) / (1 - model.fertility[shet == 1 & sex == 1,ratio_lower]))*100)),
-       ")")
+       "%)")
 paste0("")
 
 ## Partner at Home Contribution to Fitness:
 paste0("Contribution of Partner at Home to Fitness: ",
        sprintf("%0.1f",(((1 - model.partner[shet == 1 & sex == 1,ratio_mid]) / (1 - model.fertility[shet == 1 & sex == 1,ratio_mid]))*100)),
-       " (",
+       "% (",
        sprintf("%0.1f",(((1 - model.partner[shet == 1 & sex == 1,ratio_upper]) / (1 - model.fertility[shet == 1 & sex == 1,ratio_upper]))*100)),
        " - ",
        sprintf("%0.1f",(((1 - model.partner[shet == 1 & sex == 1,ratio_lower]) / (1 - model.fertility[shet == 1 & sex == 1,ratio_lower]))*100)),
-       ")")
+       "%)")
 paste0("")
 
 ## Overall contribution to Fitness:
 paste0("Contribution of sHET to Fitness (sex averaged): ",
        sprintf("%0.1f",((1-model.fertility[shet == 1,mean(ratio_mid)])*100)),
-       " (",
+       "% (",
        sprintf("%0.1f",((1-model.fertility[shet == 1,mean(ratio_upper)])*100)),
        " - ",
        sprintf("%0.1f",((1-model.fertility[shet == 1,mean(ratio_lower)])*100)),
-       ")")
+       "%)")
 paste0("")
 
 ## Number of Individuals

@@ -3,9 +3,6 @@
 use strict;
 use warnings;
 
-use strict;
-use warnings;
-
 open (HTML, "<../rawdata/UKBBPhenoFiles/ukb40103.html") || die "Cannot open file: $!";
 open (OUT, ">../rawdata/UKBBPhenoFiles/pheno_fields") || die "Cannot make file: $!";
 
