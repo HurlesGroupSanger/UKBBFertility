@@ -11,6 +11,7 @@ import snvcounter.annotator.PrintableVariant;
 
 public class VEPAnnotator extends AnnotationParser {
 		
+	// This is a special extension of my default annotation parser specifically for VEP annotation
 	public VEPAnnotator(File annotationFile, AnnotationType anoteType, Gene gene) throws IOException {
 		super(annotationFile, anoteType, gene);
 	}
@@ -21,6 +22,7 @@ public class VEPAnnotator extends AnnotationParser {
 		String alt = variant.getAltBaseString();
 		int pos = variant.getStart();
 		String chr = variant.getParsedChr();
+		
 		
 		VEPVariant originalVar = new VEPVariant(ref, alt, pos);
 		VEPVariant adjustedVar = NormalizeIndel(ref, alt, pos);
@@ -54,6 +56,7 @@ public class VEPAnnotator extends AnnotationParser {
 			data = line.split("\t");
 			
 			// Deidentify all information:
+			// These columns MUST be correct in the VEP annotation that we create
 			int tabixPos = Integer.parseInt(data[1]);
 			String tabixRef = data[2];
 			String tabixAlt = data[3];
@@ -131,7 +134,7 @@ public class VEPAnnotator extends AnnotationParser {
 			}
 		}
 
-		// Determine total number of transcripts that match the canonical
+		// Set a flag here if we actually found the canonical transcript for this particular variant/gene pair.
 		if (foundVariant == true && canonicalCsq == Consequence.FAIL) {
 			canonicalCsq = Consequence.NOCAN;
 		}
@@ -140,6 +143,7 @@ public class VEPAnnotator extends AnnotationParser {
 		
 	}
 		
+	// We need to left normalize InDels so that they can be annotated properly
 	private VEPVariant NormalizeIndel (String ref, String alt, int position) {
 		
 		// Deletion - take 1 base off the ref
@@ -178,6 +182,7 @@ public class VEPAnnotator extends AnnotationParser {
 		
 	}
 	
+	// Class holds my relevant variant-level information
 	private class VEPVariant {
 		
 		private String ref;
@@ -206,6 +211,7 @@ public class VEPAnnotator extends AnnotationParser {
 		
 	}
 	
+	// Class holds actual annotation that we care about:
 	public class VEPAnnotation {
 		
 		Consequence csq;
@@ -242,6 +248,7 @@ public class VEPAnnotator extends AnnotationParser {
 	
 	}
 	
+	// Possible VEP consequences that are relevant to the project
 	public enum Consequence {
 		
 		SYN,LOF_HC,LOF_LC,LOF_NONCODING,MIS,INFRAME,NONE,NOCAN,FAIL;

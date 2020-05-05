@@ -502,11 +502,10 @@ We use several genelists as part of this project:
 
 1. pLI information from the [gnomAD project](https://storage.googleapis.com/gnomad-public/release/2.1.1/constraint/gnomad.v2.1.1.lof_metrics.by_gene.txt.bgz).
 2. s~het~ from [Weghorn et al.](https://doi.org/10.1093/molbev/msz092). The reference file is included in this repository (`raw_data/genelist/shet.weghorn.txt`).
-3. HGNC to convert from varied non-ENSG IDs to ENSEMBL Gene IDs for consistancy.
-4. ENSEMBL-downloaded resources from [BioMart](https://www.ensembl.org/biomart/martview/0511514c231557b5d24ace4e8f7862e0).
-5. Male Infertility Genes from [this paper](https://academic.oup.com/humrep/article/34/5/932/5377831).
+3. ENSEMBL-downloaded resources from [BioMart](https://www.ensembl.org/biomart/martview/0511514c231557b5d24ace4e8f7862e0).
+4. Male Infertility Genes from [this paper](https://academic.oup.com/humrep/article/34/5/932/5377831).
 
-The purpose of the following scripts is to generate these lists if they are not available. This process is also duplicated when processing CNV data, as that has to be done as part of a separate script. See both the section on [loading CNVs](#_) in this document, and the separate RMarkdown document `CNVCalling_Filtering.R` for more information.
+The purpose of the following scripts is to generate these lists if they are not available. This process is also duplicated when processing CNV data and annotating SNVs/InDels, as that has to be done as part of a separate script. See both the section on [Variant Data](#4._variant_data) in this document, and the separate RMarkdown documents `CNVCalling_Filtering.R` and `SNVCalling_Filtering.Rmd`, respectively, for more information.
 
 *Note*: These scripts assume you have `curl` installed on your system, which _should_ be true if you are using macos. Please change the scripts below if this is not the case.
 
@@ -561,12 +560,6 @@ mv rawdata/genelists/hg19.all_genes_with_pli.2.txt rawdata/genelists/hg19.all_ge
 
 # sHET file:
 scripts/matcher.pl -file1 rawdata/genelists/hg19.genes.txt -file2 rawdata/genelists/shet.hgnc.txt -r | perl -ne 'chomp $_;  @F = split("\t", $_); print "$F[0]\t$F[5]\t$F[6]\t$F[7]\t$F[8]\t$F[9]\t$F[10]\t$F[2]\n";' > rawdata/genelists/hg19.all_genes_with_shet.txt
-
-# Make a list of all genes and their coordinates for WES annotation:
-perl -ane 'splice(@F, -2); print join("\t", @F) . "\n";' rawdata/genelists/hg19.all_genes_with_shet.txt > rawdata/genelists/hg19.coordinates.txt
-perl -ane 'splice(@F, -2); print join("\t", @F) . "\n";' rawdata/genelists/hg19.all_genes_with_pli.txt >> rawdata/genelists/hg19.coordinates.txt
-sort rawdata/genelists/hg19.coordinates.txt | uniq > rawdata/genelists/hg19.coordinates.2.txt
-mv rawdata/genelists/hg19.coordinates.2.txt rawdata/genelists/hg19.coordinates.txt
 ```
 
 ### Hg38 Gene Lists
@@ -590,12 +583,6 @@ perl -ne 'chomp $_; @F = split("\t", $_); print "$F[0]\t$F[6]\n";' rawdata/genel
 perl -ne 'chomp $_; @F = split("\t", $_); print "$F[0]\t$F[6]\n";' rawdata/genelists/hg38.all_genes_with_shet.txt >> rawdata/genelists/hg38_to_hg19_ENSG.txt
 sort rawdata/genelists/hg38_to_hg19_ENSG.txt | uniq > rawdata/genelists/hg38_to_hg19_ENSG.2.txt
 mv rawdata/genelists/hg38_to_hg19_ENSG.2.txt rawdata/genelists/hg38_to_hg19_ENSG.txt 
-
-# Make a list of all genes and their coordinates for WES annotation:
-perl -ane 'splice(@F, -2); print join("\t", @F) . "\n";' rawdata/genelists/hg38.all_genes_with_shet.txt > rawdata/genelists/hg38.coordinates.txt
-perl -ane 'splice(@F, -2); print join("\t", @F) . "\n";' rawdata/genelists/hg38.all_genes_with_pli.txt >> rawdata/genelists/hg38.coordinates.txt
-sort rawdata/genelists/hg38.coordinates.txt | uniq > rawdata/genelists/hg38.coordinates.2.txt
-mv rawdata/genelists/hg38.coordinates.2.txt rawdata/genelists/hg38.coordinates.txt
 ```
 
 ### Disease Genes
@@ -869,7 +856,7 @@ rm(expression)
 
 Section tbd, but need to make sure they get two files:
 
-1. Variant calls themselves: `rawdata/snvresources/counts.ukbb_wes.revised.txt`
+1. Variant calls themselves: `rawdata/snvresources/counts.ukbb_wes.txt`
 2. Field of 'has wes' from our derived data. I have already created a fake version at `rawdata/snvresources/has_exome.txt`
 
 ```{bash}
@@ -944,7 +931,7 @@ load.data <- function(counts.file,
 }
 
 # UKBB/Hg38
-counts.file <- "rawdata/snvresources/counts.ukbb_wes.revised.txt"
+counts.file <- "rawdata/snvresources/counts.ukbb_wes.txt"
 samples.file <- "rawdata/snvresources/has_exome.txt"
 indv.to.keep <- paste0(UKBB.phenotype.data[,eid])
 
@@ -3806,7 +3793,7 @@ plot.testis.ptv <- ggplot(shet.genes.expr, aes(as.factor(has.ptv), log.mean, gro
 ## Is a male infertility gene
 plot.male.shet.wilcox <- wilcox.test(log.mean ~ male.infertility, data = shet.genes.expr[sHET.val > 0.15],alternative=c("less"))
 plot.male.shet <- ggplot(shet.genes.expr[sHET.val > 0.15], aes(as.factor(male.infertility), log.mean, group = as.factor(male.infertility))) +
-  geom_boxplot(name = "") +
+  geom_boxplot() +
   scale_x_discrete(name = "Is male infertility gene?") + 
   scale_y_continuous(name = expression(bold(Median~log[e](Expr.~Testis)))) + 
   annotate("text", x = 1.5, y = 6, size = 4, label = if_else(plot.male.shet.wilcox$p.value < 0.05, paste0("p = ", sprintf("%0.1e", plot.male.shet.wilcox$p.value)),"p > 0.05")) +

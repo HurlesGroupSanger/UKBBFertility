@@ -19,6 +19,7 @@ public class SNVCounterOptions {
 
 	private OptionHolder holder;
 	
+	// Is just a holder/parser for command-line options
 	public SNVCounterOptions(String args[]) throws IOException {
 		
 		Options options = buildOptions();

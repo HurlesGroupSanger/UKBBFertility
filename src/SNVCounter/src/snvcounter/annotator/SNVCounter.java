@@ -71,7 +71,7 @@ public class SNVCounter {
 		String annotationPrefix = EvaluateIndex.returnAnnotationPrefix(vcfFile);
 		
 		// MPC
-		File mpcDict = new File(rootDir.getAbsolutePath() + "/" + genomeVers.getStringRep() + "/mpc/fordist_constraint_official_mpc_values_v2.txt.gz");
+		File mpcDict = new File(rootDir.getAbsolutePath() + "/" + genomeVers.getStringRep() + "/mpc/mpc.tsv.gz");
 		AnnotationParser mpc = new AnnotationParser(mpcDict, AnnotationType.MPC, gene);
 		
 		// CADD -- Also includes the class for running CADD to annotate InDels

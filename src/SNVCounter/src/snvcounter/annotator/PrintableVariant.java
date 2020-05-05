@@ -33,6 +33,7 @@ public class PrintableVariant extends VariantContext {
 	private AnnotationParser caddRecovery;
 	private static DecimalFormat df;
 		
+	// Is a class for holding a single variant (i.e. 1 row in a VCF file) and all relevant annotation.
 	public PrintableVariant(VariantContext variantContext, GenomeVersion genomeVers, int altNumber, AnnotationParser caddRecovery) throws Exception {
 		
 		super(variantContext);
@@ -45,7 +46,8 @@ public class PrintableVariant extends VariantContext {
 			
 	}
 	
-	// Is called after annotating VEP and VQSR
+	// Is called after annotating VEP and VQSR. 
+	// Fixes SNVs that were deemed multiallelic with an InDel and thus have are 2+ bases long with only one actual change
 	public void fixEqualLengthSNV() {
 		
 		String ref = this.refString;
@@ -74,6 +76,7 @@ public class PrintableVariant extends VariantContext {
 		
 	}
 	
+	// Just check if passes VQSR
 	public boolean isPrintable() {
 		
 		//First term is SNVs, apply SNV VQSR; Second term is InDels, apply InDel VQSR			
@@ -86,6 +89,8 @@ public class PrintableVariant extends VariantContext {
 		}
 		
 	}
+	
+	// Just format the variant for proper print format.
 	public String printableVariant(Entry<String, Integer> sampleEntry, double AC, double AN, int AP, double AF, String geneID) throws ScoreNotFoundException {
 		
 		List<String> printableString = new ArrayList<String>();
@@ -115,6 +120,8 @@ public class PrintableVariant extends VariantContext {
 		return(Combine.combineList(printableString, "\t"));
 		
 	}
+	
+	// Just formats scores for printing and checks if we need to query CADD files to recover
 	private String printDoubleScore(double score, AnnotationType annoteType) throws ScoreNotFoundException {
 		
 		String printableString;
@@ -146,10 +153,10 @@ public class PrintableVariant extends VariantContext {
 		
 	}
 
+	// Holders for various basic information
  	public String getParsedChr() {
 		return parsedChr;
 	}
-	
 	public String getRefBaseString() {
 		return(refString);	
 	}
@@ -162,7 +169,6 @@ public class PrintableVariant extends VariantContext {
 	public Allele getAltAllele() {
 		return this.getAlternateAllele(altNumber);
 	}
-	
 	public boolean isRelevant() {
 		return vepAnnotation.isRelevant();
 	}
@@ -171,7 +177,6 @@ public class PrintableVariant extends VariantContext {
 	public void setVepAnnotation(VEPAnnotation vepAnnotation) {
 		this.vepAnnotation = vepAnnotation;
 	}
-	// For setting different annotations
 	public void setCadd(double cadd) {
 		this.cadd = cadd;
 	}
@@ -189,6 +194,7 @@ public class PrintableVariant extends VariantContext {
 	}
 	
 	// Private helpers to the constructor
+	// to check to make sure 'chr' annotation in chromosome names matches
 	private String checkChrAnnotation(GenomeVersion genomeVers) throws Exception {
 		String variantChr;
 		if (genomeVers == GenomeVersion.HG38) {

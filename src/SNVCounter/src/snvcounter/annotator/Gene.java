@@ -16,6 +16,7 @@ public class Gene {
 	private int hgnc;
 	private String geneName;
 	
+	// Class holds all relevant info to the gene that we are currently annotating.
 	public Gene (File geneList, int jobNumber, GenomeVersion genomeVers) throws IOException, GeneNotFoundException {
 	
 		boolean foundGene = getGene(geneList, jobNumber, genomeVers);
@@ -27,23 +28,18 @@ public class Gene {
 	public String getEnsID() {
 		return ensID;
 	}
-
 	public String getChr() {
 		return chr;
 	}
-
 	public int getStart() {
 		return start;
 	}
-
 	public int getEnd() {
 		return end;
 	}
-
 	public int getHgnc() {
 		return hgnc;
 	}
-
 	public String getGeneName() {
 		return geneName;
 	}
@@ -90,9 +86,6 @@ public class Gene {
 	
  	public class GeneNotFoundException extends Exception {
 
-		/**
-		 * 
-		 */
 		private static final long serialVersionUID = 1L;
 		
 		public GeneNotFoundException() {

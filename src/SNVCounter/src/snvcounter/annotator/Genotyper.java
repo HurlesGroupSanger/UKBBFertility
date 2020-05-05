@@ -21,6 +21,7 @@ public class Genotyper {
 	
 	private Map<String, Integer> samplesWithVariant;
 		
+	// This class goes through all individual genotypes ONLY for samples in the 'sampleIDs' list
 	public Genotyper (PrintableVariant printableVar, Set<String> sampleIDs) {
 		
 		this.printableVar = printableVar;
@@ -64,7 +65,8 @@ public class Genotyper {
 				int GQ = geno.getGQ();
 				int AD[] = geno.getAD();
 				
-				// This is necessary to be able to run UKBB data since it does not have annotated DP/GQ/AD values
+				// This is necessary to be able to run UKBB data since it does not have annotated DP/GQ/AD values, 
+				// just converts them to values that pass our defaults
 				DP = DP == -1 ? 10 : DP;
 				GQ = GQ == -1 ? 40 : GQ;
 				int altDepth = AD == null ? 5 : AD[printableVar.getAltNumber() + 1];

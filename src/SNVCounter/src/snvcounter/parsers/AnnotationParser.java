@@ -16,6 +16,18 @@ public class AnnotationParser implements Closeable {
 	protected File annotationFile;
 	protected Gene gene;
 	
+	/*
+	 *  All annotation files that are used to annotate start with the same format; columns:
+	 *  1 - chromosome
+	 *  2 - position
+	 *  3 - ref
+	 *  4 - alt
+	 *  
+	 *  After that, can have any number of columns, but the enum 'AnnotationType' 
+	 *  tells the code which exact column to grab relevant annotation from. 
+	 *  For PEXT, we also check that the gene of interest is checked. 
+	 *  
+	 */
 	public AnnotationParser(File annotationFile, AnnotationType anoteType, Gene gene) throws IOException {
 				
 		File annotationIndex = new File(annotationFile.getAbsolutePath() + ".tbi");
@@ -30,6 +42,7 @@ public class AnnotationParser implements Closeable {
 		annotationReader.close();
 	}
 	
+	// Get the relevant annotation from a tabix indexed file
 	public double getAnnotation(PrintableVariant variant) throws IOException {
 						
 		String ref = variant.getRefBaseString();
@@ -58,6 +71,7 @@ public class AnnotationParser implements Closeable {
 				}
 				double rawScore = Double.parseDouble(data[anoteType.getColumnNumber()]);
 				
+				// Use this to check if InDel
 				int sizeDiff = Math.abs(alt.length() - ref.length());
 				
 				//PEXT will not match InDels. Fix here by just taking the PEXT score of the InDel's start position. Should be reasonably accurate.
@@ -91,7 +105,8 @@ public class AnnotationParser implements Closeable {
 		return caughtScore;
 		
 	}
-		
+	
+	// This is how we know what column to grab relevant annotation out of...
 	public enum AnnotationType {
 		CADD(5, false),GNOMAD(5, false),MPC(18, false),VQSR(5, false),VEP(0, false),PEXT(5, true);
 		
