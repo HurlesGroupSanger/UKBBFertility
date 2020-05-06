@@ -2,18 +2,19 @@
 title: "PhenotypeTesting"
 author: "Eugene Gardner"
 date: "22/04/2020"
-output: html_document
+output: 
   html_document:
     toc: true
+    toc_depth: 2
 ---
 
 # 1. Startup and Introduction
 
 This document contains data UKBB and comparisons between and within this data to the trait of interest, Fertility. If using data produced by this repo, please cite [our manuscript](https:tbd).
 
-*BIG Note:* The first part of this document involves running scripts to generate text files required for downstream analysis. _PLEASE_ start there and make sure all scripts ran successfully. All scripts for this section are available in the folder `./scripts/` and _will not_ run as part of this document. There are two additional resources that you need to download -- the OMIM morbid map, which requires registration and DDG2P. See the section [on disease genes](#disease_genes) below.
+**Big Note**: The first part of this document involves running scripts to generate text files required for downstream analysis. _PLEASE_ start there and make sure all scripts ran successfully. All scripts for this section are available in the folder `./scripts/` and _will not_ run as part of this document. There are two additional resources that you need to download -- the OMIM morbid map, which requires registration and DDG2P. See the section [on disease genes](#disease_genes) below.
 
-*Second BIG Note*: You also need to have access to UKBiobank, but this script is agnostic to the UKBiobank application number. You should be able to download a bulk phenotype file and, if it contains the correct phenotypes as referred to in the manuscript and in the file `rawdata/phenofiles/fields_to_extract.txt`, you should be able to reproduce our data and figures. 
+**Big Note**: You also need to have access to UKBiobank, but this script is agnostic to the UKBiobank application number. You should be able to download a bulk phenotype file and, if it contains the correct phenotypes as referred to in the manuscript and in the file `rawdata/phenofiles/fields_to_extract.txt`, you should be able to reproduce our data and figures. 
 
 ## 1A. Libraries
 
@@ -422,20 +423,20 @@ This section is attempting to replicate the general codings of [this](https://ja
 
 * 20406 (alcohol), 20503 (prescription meds), 20456(rec. drugs) - Substance Addiction. Field 20401 indicates a 'YES' answer to ever addicted to a substance or behaviour, which is a 'gate' question to answer these three fields.
 * 20544: Numbers that follow are the code for that disorder 
-** Social Anxiety/Phobia (1)
-** Psychotic disorders (2 & 3) - This is also encoded in ICD10 code(s) F20-29. Could get a bigger N by using ICD10 codes?
-** Personality disorders (4)
-** Any other diabling phobia(5)
-** Panic Attacks (6)
-** OCD (7)
-** Bipolar disorder, manic depressive diso., etc. (10)
-** Depression (11)
-** Eating disorders (12,13,16)
-** ASD (14)
-** General Anxiety Disorder(15)
-** Agorophobia (17)
-** ADD/ADHD (18)
-** Did not answer one or both sections (-818, -819)
+    + Social Anxiety/Phobia (1)
+    + Psychotic disorders (2 & 3) - This is also encoded in ICD10 code(s) F20-29. Could get a bigger N by using ICD10 codes?
+    + Personality disorders (4)
+		+  Any other diabling phobia(5)
+		+  Panic Attacks (6)
+		+  OCD (7)
+		+  Bipolar disorder, manic depressive diso., etc. (10)
+		+  Depression (11)
+		+  Eating disorders (12,13,16)
+		+  ASD (14)
+		+  General Anxiety Disorder(15)
+		+  Agorophobia (17)
+		+  ADD/ADHD (18)
+		+  Did not answer one or both sections (-818, -819)
 
 Processing of MH Traits functions similarly to ICD10 above, where I have to print a file, processes with perl and then read it back in:
 
@@ -503,11 +504,12 @@ We use several genelists as part of this project:
 1. pLI information from the [gnomAD project](https://storage.googleapis.com/gnomad-public/release/2.1.1/constraint/gnomad.v2.1.1.lof_metrics.by_gene.txt.bgz).
 2. s~het~ from [Weghorn et al.](https://doi.org/10.1093/molbev/msz092). The reference file is included in this repository (`raw_data/genelist/shet.weghorn.txt`).
 3. ENSEMBL-downloaded resources from [BioMart](https://www.ensembl.org/biomart/martview/0511514c231557b5d24ace4e8f7862e0).
-4. Male Infertility Genes from [this paper](https://academic.oup.com/humrep/article/34/5/932/5377831).
+4. Disease genes from ClinVar, DDG2P, and OMIM (see that section for links).
+5. Male Infertility Genes from [this paper](https://academic.oup.com/humrep/article/34/5/932/5377831).
 
 The purpose of the following scripts is to generate these lists if they are not available. This process is also duplicated when processing CNV data and annotating SNVs/InDels, as that has to be done as part of a separate script. See both the section on [Variant Data](#4._variant_data) in this document, and the separate RMarkdown documents `CNVCalling_Filtering.R` and `SNVCalling_Filtering.Rmd`, respectively, for more information.
 
-*Note*: These scripts assume you have `curl` installed on your system, which _should_ be true if you are using macos. Please change the scripts below if this is not the case.
+**Note**: These scripts assume you have `curl` installed on your system, which _should_ be true if you are using macos. Please change the scripts below if this is not the case.
 
 ### Download Resources from BioMart
 
@@ -590,16 +592,16 @@ mv rawdata/genelists/hg38_to_hg19_ENSG.2.txt rawdata/genelists/hg38_to_hg19_ENSG
 This section of the document is not evaluated, as we need to acquire disease gene resources from three locations. The actual acquisition of these files is trivial, but did not want to attempted to make reproduceable due to potential links breaking. If this section needs to be reproduced, download the resources at the _rough_ following locations and run the code in this section. Otherwise, move to the next section where the file produced by this section has already been generated. Locations to place necessary files and file dates used in the manuscript are listed below:
 
 1. Clinvar - https://ftp.ncbi.nlm.nih.gov/pub/clinvar/vcf_GRCh37/archive_2.0/2019/clinvar_20191003.vcf.gz
-** `rawdata/genelists/clinvar.vcf.gz`
-** date: October 3, 2019
+		+  `rawdata/genelists/clinvar.vcf.gz`
+		+  date: October 3, 2019
 2. DDG2P - http://www.ebi.ac.uk/gene2phenotype/downloads/DDG2P.csv.gz
-** `rawdata/genelists/DDG2P.csv`
-** date: November 12, 2019
+		+  `rawdata/genelists/DDG2P.csv`
+		+  date: November 12, 2019
 3. OMIM - https://www.omim.org/downloads
-** `rawdata/genelists/morbidmap.txt`
-** date: October 8, 2019
+		+  `rawdata/genelists/morbidmap.txt`
+		+  date: October 8, 2019
 
-*Note*: To download OMIM morbid map you will need to register and place a copy of this file at: `rawdata/genelists/morbidmap.txt`
+**Note**: To download OMIM morbid map you will need to register and place a copy of this file at: `rawdata/genelists/morbidmap.txt`
 
 ```{r process disease genes, eval = F}
 ## Clinvar
@@ -665,7 +667,7 @@ rm(ddg2p, develGenes, omimGenes, clinvarVCFfiltered, clinvarGenes, hgnc.to.ENSG,
 
 This is a list of genes confirmed as playing a role in male infertility from [Manon Oud and Joris Veltman](https://academic.oup.com/humrep/article/34/5/932/5377831). We download and process the data direct from thier supplement (Table S3-S6):
 
-*Note*: I have no idea if the link below will work for everyone. If it doesn't download the table manually from [here](https://academic.oup.com/humrep/article/34/5/932/5377831#supplementary-data) and set the name of the file to `rawdata/genelists/male_infertility_genes.xlsx`
+**Note**: I have no idea if the link below will work for everyone. If it doesn't, download the table manually from [here](https://academic.oup.com/humrep/article/34/5/932/5377831#supplementary-data) and set the name of the file to `rawdata/genelists/male_infertility_genes.xlsx`
 
 ```{bash Get Male Infertility Genes}
 
@@ -854,12 +856,14 @@ rm(expression)
 
 #### Downloading Requisite Data From UKBB
 
-Section tbd, but need to make sure they get two files:
+Section tbd, but need to make sure to get two files:
 
 1. Variant calls themselves: `rawdata/snvresources/counts.ukbb_wes.txt`
 2. Field of 'has wes' from our derived data. I have already created a fake version at `rawdata/snvresources/has_exome.txt`
 
-```{bash}
+This data is not going to be available until final publication of the manuscript. This is due to guidelines from UK Biobank that do not allow returned data fields for studies not yet through peer review. We cannot make these calls available as part of this repository due to patient/subject protection.
+
+```{bash get SNVs, eval = F}
 
 
 
@@ -867,9 +871,7 @@ Section tbd, but need to make sure they get two files:
 
 #### Annotating Rare Variants in UKBB
 
-SNV and InDel annotation is handled by a separate repository, as the pipeline was written for more general annotation of sequencing data. Please see the following repository for how UKBB data was filtered/annotated from raw VCF files:
-
-`https://github.com/eugenegardner/SNVCounter`
+SNV and InDel annotation is handled by the document `SNVCalling_Filtering.Rmd` within this repository. Please see that document for details on how to perform SNV QC and annotation.
 
 #### Build Data Files
 
@@ -1190,18 +1192,22 @@ write.table(ukbb.to.fix,"rawdata/cnvresources/ukbb.cnvs.qcd.txt",sep = "\t", col
 
 #### Downloading Requisite Data From UKBB
 
-Section tbd, but need to make sure they get two files:
+Section tbd, but need to make to get two files (and place at the following location):
 
-1. Variant calls themselves: `rawdata/snvresources/counts.ukbb_wes.revised.txt`
-2. Field of 'has CNV data' from our derived data. I have already created a fake version at `rawdata/snvresources/has_cnv_data.txt`
+1. Variant calls themselves: `rawdata/cnvresources/ukbb.cnvs.qcd.txt`
+2. Field of 'has CNV data' from our derived data. I have already created a fake version at `rawdata/cnvresources/has_cnvs.txt`
 
-```{bash}
+This data is not going to be available until final publication of the manuscript. This is due to guidelines from UK Biobank that do not allow returned data fields for studies not yet through peer review. We cannot make these calls available as part of this repository due to patient/subject protection.
+
+```{bash get SNVs, eval = F}
 
 
 
 ```
 
 #### Building R Annotations from VEP:
+
+This file was created as part of CNV QC in the `CNVCalling_Filtering.Rmd` document. See that document for more information on how this file was generated and CNV annotation in general.
 
 ```{r Build Annotations, fig.height=4, fig.width=10}
 
@@ -1966,10 +1972,10 @@ rm(mhq,icd)
 Conclusions from above are that the ICD-10 data is too sparse for us to be able to use it truly effectively. Also confirmed is that, in general, it also looks like the UKBB is healthier than the population as a whole (at least when comparing to Power et al.), which is a fairly obvious conclusion. With that in mind, we think we can only really do two different regressions:
 
 * Binary of do you have a disability that has been previously shown to be associated with [rare variant burden](https://www.sciencedirect.com/science/article/pii/S0002929718301630)?:
-** Schizophrenia, Autism, ADHD, Bipolar
-** Also have ID/DD, but we don't have that here...
+		+  Schizophrenia, Autism, ADHD, Bipolar
+		+  Also have ID/DD, but we don't have that here...
 * Binary of do you have a disability that Power et al has shown to have <0.8 drop in fertility for either gender?:
-** Schizophrenia, Autism, bipolar disorder, eating disorders
+		+  Schizophrenia, Autism, bipolar disorder, eating disorders
 
 For the purposes of this manuscript, we have gone for the former, although both have similar results. This code block adds a binary value for having any of those phenotypes ('ganna.binary') to our primary phenotype table.
 
@@ -2097,7 +2103,7 @@ Each section other than the first 4 include a subheading:
 1. For estimating the effect of a trait on childlessness alone through a general linear model.
 2. For estimating the effect of a trait on childlessness and overall fitness
 
-*Note*: All plotting of estimated fitness is done when actually generating [Figures](#7._figures).
+**Note**: All plotting of estimated fitness is done when actually generating [Figures](#7._figures).
 
 ## 6A. Function for Testing Simple Regressions Via GLM
 
@@ -2376,7 +2382,7 @@ calc.childlessness <- function(glm.result, y.var.result, y.var) {
         ## Determine the increased proportion of individuals without children due to shet
         sim.indv <- data.table(id = c(1:100000),shet=modifier, sex = s)
         
-        ## Note to self -- I HAVE NO IDEA why I have to use as.character here. Something broken in data.table
+        ## I HAVE NO IDEA why I have to use as.character here. Something broken in data.table
         sim.indv[,c("agePulse",eval(y.var)):=simulate.scores(prop.shet),by=1:nrow(sim.indv)]
         sim.indv[,agePulse.squared:=agePulse^2]
         
@@ -2689,7 +2695,7 @@ paste0("SD   IQ, Swedish Data: ", sprintf("%0.0f", sd.cog))
 
 ##### IQ and Childlessness
 
-*Note*: The data provided in this section indicate _increased_ childlessness, where the baseline is at IQ = 100. All values are thus ± from the childlessness at IQ 100, and we adjust for that when doing our estimates.
+**Note**: The data provided in this section indicate _increased_ childlessness, where the baseline is at IQ = 100. All values are thus ± from the childlessness at IQ 100, and we adjust for that when doing our estimates.
 
 ```{r Fit Childlessness Data}
 
@@ -3311,7 +3317,7 @@ make.meta.table <- function(data, is.linear,
 
 ## 7B. Main Text
 
-Please note -- a very light amount of editing was used to make better figure legends for main text figures 1 and 2.
+**Note**: A very light amount of editing was used to make better figure legends for main text figures 1 and 2.
 
 ### Figure 1.
 
@@ -3441,7 +3447,7 @@ figure.1 <- top / middle / bottom  + plot_layout(guides="keep",nrow=3,heights = 
 
 figure.1
 
-ggsave("figures/Figure1.eps",figure.1,width=8,height=9)
+ggsave("figures/Figure1.svg",figure.1,width=8,height=9)
 
 plot.a[[1]][ variant.type == "META",paste0(Sex, " OR=",sprintf("%0.2f",var.beta), " [95% CI ",sprintf("%0.2f",exp(log(var.beta)-(1.96*var.stderr))), "-",sprintf("%0.2f",exp(log(var.beta)+(1.96*var.stderr))),"]", " p=",if_else(var.p<=1e-2,sprintf("%0.1e",var.p),sprintf("%0.2f",var.p)))]
 
@@ -3462,7 +3468,7 @@ figure.2 <- fig.partner[[2]] + fig.ea[[2]] + fig.hhi[[2]] + fig.cog[[2]] + plot_
 
 figure.2
 
-ggsave("figures/Figure2.eps",figure.2,width=7,height=8.5)
+ggsave("figures/Figure2.svg",figure.2,width=7,height=8.5)
 
 fig.partner[[1]][Sex == "Male" & variant.type == "META",paste0(Sex, " Partner OR=",sprintf("%0.2f",var.beta), " [95% CI ",sprintf("%0.2f",exp(log(var.beta)-(1.96*var.stderr))), "-",sprintf("%0.2f",exp(log(var.beta)+(1.96*var.stderr))),"]", " p=",if_else(var.p<=1e-2,sprintf("%0.1e",var.p),sprintf("%0.2f",var.p)))]
 
@@ -3514,7 +3520,7 @@ no.disease.plot[[1]][Sex == "Male" & variant.type == "META",paste0(Sex," Disease
 
 CNVs Per Individual Figures
 
-```{r fig.height=5, fig.width=8}
+```{r fig.height=8, fig.width=8}
 
 ukbb.annotated.cnvs.qcd[,dummy:=1]
 
@@ -3564,7 +3570,7 @@ x.hist <- ggplot(totals.filtered,aes(num.del.sites)) + geom_histogram(binwidth=1
 y.hist <- ggplot(totals.filtered,aes(len.del)) + geom_histogram(binwidth=100000, colour=del.line, fill=del.fill) + xlim(-100000,y.lim) + ylab("Count") + coord_flip() + theme.figures + theme(axis.title.y=element_blank(),axis.text.y=element_blank())
 
 ## All the "empty" plots here are just used to push the graphs together.
-del.plot <- x.hist + plot_spacer() + plot1 + y.hist + plot_layout(ncol = 2, nrow = 2, widths = c(2,1), heights = c(1,2))
+del.plot <- x.hist + plot_spacer() + plot1 + y.hist + plot_layout(ncol = 2, nrow = 2, widths = c(2,1), heights = c(1,2), tag_level="keep")
 del.plot
 
 ## DUPs
@@ -3577,11 +3583,73 @@ y.hist <- ggplot(totals.filtered,aes(len.dup)) + geom_histogram(binwidth=500000,
 dup.plot <- x.hist + plot_spacer() + plot1 + y.hist + plot_layout(ncol = 2, nrow = 2, widths = c(2,1), heights = c(1,2))
 dup.plot
 
-total.plot <- (del.plot | dup.plot)
+## Calculate Singleton/Maf <1e-3 variants like for SNVs:
 
+samp.size <- nrow(samples.UKBB.cnv)
+test <- ukbb.annotated.cnvs.qcd[eid %in% samples.UKBB.cnv[,eid] & filter.0.95.wes.support.score == T & ct == "DEL"]
+
+allele.frq <- test[ct=="DEL",sum(gt),by=c("locus")]
+allele.frq[,frq:=V1/(samp.size*2)]
+setnames(allele.frq,"V1","ac")
+
+test <- merge(test,allele.frq[,c("locus","frq","ac")],by=c("locus"))
+
+cnv.counts <- data.table()
+
+counts <- test[ac == 1 & ct == "DEL", sum(dummy), by = "eid"]
+counts <- merge(counts, samples.UKBB.cnv, all.y = T, by = "eid")
+counts[,V1:=if_else(is.na(V1),0,V1)]
+counts[,AF:="AC1"]
+counts[,CSQ:="DEL"]
+cnv.counts <- rbind(cnv.counts, counts)
+
+counts <- test[frq <= 1e-3 & ct == "DEL", sum(dummy), by = "eid"]
+counts <- merge(counts, samples.UKBB.cnv, all.y = T, by = "eid")
+counts[,V1:=if_else(is.na(V1),0,V1)]
+counts[,AF:="MAF1e-3"]
+counts[,CSQ:="DEL"]
+cnv.counts <- rbind(cnv.counts, counts)
+
+samp.size <- nrow(samples.UKBB.cnv)
+test <- ukbb.annotated.cnvs.qcd[eid %in% samples.UKBB.cnv[,eid] & filter.0.95.wes.support.score == T & ct == "DUP"]
+
+allele.frq <- test[ct=="DUP",sum(gt),by=c("locus")]
+allele.frq[,frq:=V1/(samp.size*2)]
+setnames(allele.frq,"V1","ac")
+
+test <- merge(test,allele.frq[,c("locus","frq","ac")],by=c("locus"))
+
+counts <- test[ac == 1 & ct == "DUP", sum(dummy), by = "eid"]
+counts <- merge(counts, samples.UKBB.cnv, all.y = T, by = "eid")
+counts[,V1:=if_else(is.na(V1),0,V1)]
+counts[,AF:="AC1"]
+counts[,CSQ:="DUP"]
+cnv.counts <- rbind(cnv.counts, counts)
+
+counts <- test[frq <= 1e-3 & ct == "DUP", sum(dummy), by = "eid"]
+counts <- merge(counts, samples.UKBB.cnv, all.y = T, by = "eid")
+counts[,V1:=if_else(is.na(V1),0,V1)]
+counts[,AF:="MAF1e-3"]
+counts[,CSQ:="DUP"]
+cnv.counts <- rbind(cnv.counts, counts)
+
+cnv.counts[,CSQ:=if_else(CSQ == "DEL","Deletions","Duplications")]
+cnv.counts[,AF:=if_else(AF=="AC1","Private Vars.","MAF ≤ 1e-3 Vars.")]
+cnv.counts[,AF:=factor(AF,levels=c("Private Vars.","MAF ≤ 1e-3 Vars."))]
+setnames(cnv.counts,"V1","count")
+
+del.count.plot <- ggplot(cnv.counts[CSQ == "Deletions"],aes(count,fill=AF)) + geom_histogram(binwidth=1, position = "identity", alpha = 0.5) + scale_y_continuous(name = "Number of Individuals") + scale_x_continuous(name = "# of Deletions.",limits = c(-1,6)) + scale_alpha_continuous(range=c(0,1)) + scale_fill_discrete(guide=guide_legend(title="")) + theme.figures.legend
+del.count.plot
+
+dup.count.plot <- ggplot(cnv.counts[CSQ == "Duplications"],aes(count,fill=AF)) + geom_histogram(binwidth=1, position = "identity", alpha = 0.5) + scale_y_continuous(name = "") + scale_x_continuous(name = "# of Duplications",limits = c(-1,6)) + scale_alpha_continuous(range=c(0,1)) + scale_fill_discrete(guide=guide_legend(title="")) + theme.figures.legend
+dup.count.plot
+
+bottom <- (del.count.plot | dup.count.plot) / guide_area() + plot_layout(guides="collect", heights=c(4,1))
+
+total.plot <- (del.plot | dup.plot) / (bottom) + plot_layout(heights = c(1.7,1))
 total.plot
 
-ggsave("figures/supplement/SuppFig1.png",total.plot,dpi = 300,height = 5, width = 8, units = c("in"))
+ggsave("figures/supplement/SuppFig1.png",total.plot,dpi = 300,height = 8, width = 8, units = c("in"))
 
 quant.table <- data.table(table(ukbb.annotated.cnvs.qcd[filter.0.95.wes.support.score==T,ct]))
 paste0("Number of CNVs (Unfiltered Indiv)  : ",quant.table[,sum(N)], " (DEL: ", quant.table[V1 == "DEL",N], "; DUP: ", quant.table[V1 == "DUP",N],")")
@@ -3599,8 +3667,8 @@ SNV Counts Per Individual.
 
 UKBB.counts <- count.variants(variants.UKBB,samples.UKBB,0.001)
 UKBB.counts[,CSQ:=if_else(CSQ == "LOF_HC","PTVs",if_else(CSQ == "MIS","Missense",if_else(CSQ == "SYN","Synonymous",as.character(NA))))]
-UKBB.counts[,AF:=if_else(AF=="AC1","Singleton Vars.","MAF ≤ 1e-3 Vars.")]
-UKBB.counts[,AF:=factor(AF,levels=c("Singleton Vars.","MAF ≤ 1e-3 Vars."))]
+UKBB.counts[,AF:=if_else(AF=="AC1","Private Vars.","MAF ≤ 1e-3 Vars.")]
+UKBB.counts[,AF:=factor(AF,levels=c("Private Vars.","MAF ≤ 1e-3 Vars."))]
 
 all.plot <- ggplot(UKBB.counts,aes(CSQ,count,colour=AF)) + geom_boxplot() + scale_x_discrete(name = "Variant Class") + scale_y_log10(name = "# of Variants") + scale_colour_discrete(guide=guide_legend(title="")) + theme.figures
 all.plot

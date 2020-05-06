@@ -56,10 +56,10 @@ public class CNVSampleAnnotatorOptions {
 		return xhmmFile;
 	}
 	public File getCLAMMSFile() {
-		return canoesFile;
+		return clammsFile;
 	}
 	public File getCANOESFile() {
-		return clammsFile;
+		return canoesFile;
 	}
 	public File getAxiomFile() {
 		return axiomFile;
