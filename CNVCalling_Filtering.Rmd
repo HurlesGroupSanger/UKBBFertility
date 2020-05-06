@@ -1,7 +1,7 @@
 ---
-title: "CNVCalling_Filtering"
+title: "CNV Calling and Filtering"
 author: "Eugene Gardner"
-date: "18/02/2020"
+date: "05 May 2020"
 output: 
   html_document:
     toc: true
@@ -28,6 +28,8 @@ This proceeds in the following order:
 The intent of this file is _NOT_ to perfectly regenerate the files that are provided as part of our UK Biobank, it is merely intended to document the code that we used to perform the QC itself. This document also does some comparisons on CNV QC that were not shown in our manuscript.
 
 **Note**: Example input files for some steps are given in the directory `rawdata/cnvexamples/`
+
+You can view a compiled html version of this document with all code run either within this repository at `compiled_htmls/CNVCalling_Filtering.html` or on [github](https://htmlpreview.github.io/?https://github.com/eugenegardner/UKBBFertility/blob/master/compiled_html/CNVCalling_Filtering.html).
 
 ```{r setup}
 
