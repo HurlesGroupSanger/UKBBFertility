@@ -13,17 +13,17 @@ This repository contains the supporting code for our manuscript on the relations
 
 3. Rawdata that is used as input for RMarkdown. This is provided as a tarball to save space. To use it please do the following:
 
-```
-tar -zxf rawdata.tar.gz
-```
+    ```
+    tar -zxf rawdata.tar.gz
+    ```
 
-You should then be ready to use at least `PhenotypeTesting.Rmd` pending acquisition of UK Biobank data.
+    You should then be ready to use at least `PhenotypeTesting.Rmd` pending acquisition of UK Biobank data.
 
 4. Java source code for tools that we created to do CNV and SNV/InDel annotation and QC in `src/`. This source code is provided with an [Eclipse IDE](https://www.eclipse.org/) project file to enable easy loading into eclipse. Both of these projects require external jars to compile:
     + Apache Commons [Math](http://commons.apache.org/proper/commons-math/), [CLI](http://commons.apache.org/proper/commons-cli/), and [Exec](http://commons.apache.org/proper/commons-exec/)
     + [htsjdk](https://github.com/samtools/htsjdk)
 
-Compiled jars which are runnable with a distribution of the **java14** JRE/JDK are also provided in `scripts/`. Please see CNV/SNV Calling and Filtering RMarkdowns for more information.
+    Compiled jars which are runnable with a distribution of the **java14** JRE/JDK are also provided in `scripts/`. Please see CNV/SNV Calling and Filtering RMarkdowns for more information.
 
 # Required Packages:
 
