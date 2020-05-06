@@ -1,6 +1,6 @@
 # Introduction
 
-This repository contains the supporting code for our manuscript on the relationship between rare genetic variant burden as measured by s~het~ and fertility. This repository consists of a few different resources necessary to replicate our findings:
+This repository contains the supporting code for our manuscript on the relationship between rare genetic variant burden as measured by s<sub>het</sub> and fertility. This repository consists of a few different resources necessary to replicate our findings:
 
 1. An RStudio project consisting of three RMarkdown documents:
     + `SNVCalling_Filtering.Rmd` - Examples on how CNV QC and annotation was performed.
