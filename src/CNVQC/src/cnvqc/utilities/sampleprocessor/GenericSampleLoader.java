@@ -9,8 +9,6 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
 import cnvqc.utilities.sampleprocessor.SampleInformation.Gender;
 
@@ -65,15 +63,13 @@ public class GenericSampleLoader {
 				qcData.put(splitFile, Arrays.copyOfRange(data, 1, data.length));
 			}
 		}
-			
+		
 		qcReader.close();
-						
+		
 		return qcData;
 		
 	}
 	private Map<String, SampleInformation> buildSampleInformation(BufferedReader sampleReader, Map<File, String[]> qcInfo) throws IOException {
-		
-		Pattern filePattern = Pattern.compile("(split\\d+\\.a\\d{6}\\S*)");
 		
 		sampleInformation = new HashMap<String, SampleInformation>();
 		
@@ -116,13 +112,8 @@ public class GenericSampleLoader {
 			sampleInformation.put(splitFile.getName(), currentSamp);
 			
 			// Add all samples that pass QC into sample list
-			Matcher fileMatcher = filePattern.matcher(splitFile.getName());
-			
-			if (fileMatcher.matches()) {
-				String fileName = fileMatcher.group(1);
-				if (!samples.contains(fileName)) {
-					samples.add(fileName);
-				}
+			if (!samples.contains(splitFile.getName())) {
+				samples.add(splitFile.getName());
 			}
 					
 		}

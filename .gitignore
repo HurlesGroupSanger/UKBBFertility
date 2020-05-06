@@ -9,6 +9,13 @@ rawdata/
 # Nothing from figures:
 figures/
 
+## Can't provide subject data...
+cnvexamples/batchAll.annotated.for_testing.txt
+cnvexamples/ukbb.batchAll.annotated.for_testing.txt
+
+# Stupid macos stuff
+.DS_Store
+
 # History files
 .Rhistory
 .Rapp.history

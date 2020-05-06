@@ -40,11 +40,11 @@ public class ProcessedCNVReader implements Closeable {
 			String chr = data[0];
 			int start = Integer.parseInt(data[1]);
 			int end = Integer.parseInt(data[2]);
-			File splitFile = new File(data[5]);
+			File splitFile = new File(data[4]);
 			int copyNumber = Integer.parseInt(data[8]);
-			int probeCount = Integer.parseInt(data[35]);
+			int probeCount = Integer.parseInt(data[29]);
 
-			double passValue = Double.parseDouble(data[57]);
+			double passValue = Double.parseDouble(data[47]);
 						
 			if (!chrs.contains(chr)) {
 				chrs.add(chr);

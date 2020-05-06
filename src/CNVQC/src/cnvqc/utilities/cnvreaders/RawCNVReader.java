@@ -218,7 +218,6 @@ public class RawCNVReader implements Closeable {
 		
 		String line;
 		String data[];
-				
 		Iterator itr = tabix.query(cnv.getChr(), cnv.getStart(), cnv.getEnd());			
 		
 		double totalBaits = wesBaits.size();
@@ -313,6 +312,7 @@ public class RawCNVReader implements Closeable {
 				
 		LRRandBAFInformation lrrbaf = new LRRandBAFInformation(lrrStat, bafStat, nLeft, nRight);
 		
+		lrrbafTabixReader.close();
 		return lrrbaf;
 		
 	}

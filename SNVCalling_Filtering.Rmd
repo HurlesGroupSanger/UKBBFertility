@@ -1,8 +1,11 @@
 ---
-title: "SNVCalling_Filtering"
+title: "SNV Calling and Filtering"
 author: "Eugene Gardner"
-date: "29/04/2020"
-output: html_document
+date: "05 May 2020"
+output: 
+  html_document:
+    toc: true
+    toc_depth: 2
 ---
 
 # 1. Startup and Introduction
@@ -12,25 +15,25 @@ This Markdown documents the annotation and extraction of SNV and InDel variants 
 This code makes use of the following tools:
 
 1. plinkv1.9/2 to extract variants from primary UKBB data: https://www.cog-genomics.org/plink2
-1. CADD requires a clone and install of their code repo: https://github.com/kircherlab/CADD-scripts/
-2. VEP requires a clone and install of their code repo: https://github.com/Ensembl/ensembl-vep
-** Below I provide a rough set of instructions to install [LOFTEE](https://github.com/konradjk/loftee) by Konrad Karczewski from gnomAD, which can be _very_ annoying for hg38
-3. To liftover MPC and PEXT to hg38, we need [CrossMap](http://crossmap.sourceforge.net/)
-4. As a supplement to crossmap, a local download of the GRCh38 reference to check that our mapping is correct
-5. [bcftools](http://samtools.github.io/bcftools/bcftools.html) is used in many places to parse information out of downloaded vcf/bcf files.
-** The bcftools plugin [split-vep](https://samtools.github.io/bcftools/howtos/plugin.split-vep.html) is also used when parsing vep output. Information on how to use plugins with bcftools is available [here](https://samtools.github.io/bcftools/howtos/index.html).
-6. bgzip and tabix, which is provided as part of [htslib](https://github.com/samtools/htslib).
-7. bedtools, which is used for various genome arithmatic functions
+2. CADD requires a clone and install of their code repo: https://github.com/kircherlab/CADD-scripts/
+3. VEP requires a clone and install of their code repo: https://github.com/Ensembl/ensembl-vep
+    * Below I provide a rough set of instructions to install [LOFTEE](https://github.com/konradjk/loftee) by Konrad Karczewski from gnomAD, which can be _very_ annoying for hg38
+4. To liftover MPC and PEXT to hg38, we need [CrossMap](http://crossmap.sourceforge.net/)
+5. As a supplement to crossmap, a local download of the GRCh38 reference to check that our mapping is correct
+6. [bcftools](http://samtools.github.io/bcftools/bcftools.html) is used in many places to parse information out of downloaded vcf/bcf files.
+    * The bcftools plugin [split-vep](https://samtools.github.io/bcftools/howtos/plugin.split-vep.html) is also used when parsing vep output. Information on how to use plugins with bcftools is available [here](https://samtools.github.io/bcftools/howtos/index.html).
+7. bgzip and tabix, which is provided as part of [htslib](https://github.com/samtools/htslib).
+8. bedtools, which is used for various genome arithmatic functions
 
-*Note*: The intent of this document is _not_ to be a runnable document like `PhenotypeTesting.Rmd`, it is instead to offer a guide on how SNV/InDel annotation and curation was performed. We have provided the output of this document to UK Biobank, which you can download at:
+**Note**: The intent of this document is _not_ to be a runnable document like `PhenotypeTesting.Rmd`, it is instead to offer a guide on how SNV/InDel annotation and curation was performed. We have provided the output of this document to UK Biobank, which you can download at:
 
-`-----------FILL IN HERE-----------`
+`https://fake.ukbbiobank_url.com`
 
 # 2. Required Exome Variant Files
 
 First step to analyse UK Biobank WES data is to actually acquire the variant files themselves. Please see [this page](http://biobank.ndph.ox.ac.uk/showcase/field.cgi?id=23160) for additional information on accquiring required files. Please note that conversion to VCF format requires [PLINKv1.9 or PLINKv2](https://www.cog-genomics.org/plink2) and [tabix](http://www.htslib.org/doc/tabix.html). 
 
-*Note:* DO NOTE delete the raw files after you download them. VEP annotation requires them to work properly!
+**Note**: DO NOT delete the raw files after you download them. VEP annotation requires them to work properly!
 
 Roughly, files were accquired and processed into a VCF format file with the following commands:
 
@@ -41,7 +44,7 @@ mkdir vcfs/
 cd vcfs/
 
 ## This downloads a set of plink binary format files: ukb_efe_chr1_v1.bed, ukb44165_efe_chr1_v1_s49959.fam, ukb_fe_exm_chrall_v1.bim
-## Note that you must have your keyfile provided by UKB in the same directory/pointed to with the -a flag
+## Note that you must also have your keyfile provided by UKB pointed to with the -a flag
 ukbgene efe -c1 ## bed file
 ukbgene efe -c1 -m ## fam file
 curl -O biobank.ndph.ox.ac.uk/showcase/showcase/auxdata/ukb_fe_exm_chrall_v1.bim ## bim file
@@ -58,29 +61,29 @@ tabix -p vcf ukbb_plink.vcf.gz
 
 This process is slightly complicated because I have written this code to be project-agnostic and therefore makes the possible sources of data that I am accounting for more complicated. I have provided here a simplified version of this annotation for Hg38 UK Biobank data, but this code should be fairly adaptable to other sequencing formats.
 
-*Note:* All annotations below are done *without* the "chr" prefix!
+**Note**: All annotations below are done *without* the "chr" prefix!
 
 Basic Steps:
 
 1. Variant Agnostic Databases -- For each of the below annotations I need to generate GRCh38 versions. Annotations are stored in the root folder `annotations/hg38/` with the corresponding directory name in brackets below:
-* CADD scores [`cadd/`]
-** We also have to generate CADD scores for variants not included in the default build.
-** I believe this is completely limited to InDels.
-* gnomAD allele frequencies [`gnomad/`]
-** Note that I am using AF_nfe, which is non-Finnish European AF
-* MPC scores [`mpc/`]
-** Have to lift this over to hg38
-* PEXT scores [`pext/`]
-** Have to lift this over to hg38
+    *CADD scores [`cadd/`]
+        + We also have to generate CADD scores for variants not included in the default build.
+        + I believe this is completely limited to InDels.
+    * gnomAD allele frequencies [`gnomad/`]
+        + Note that I am using AF_nfe, which is non-Finnish European AF
+    * MPC scores [`mpc/`]
+        + Have to lift this over to hg38
+    * PEXT scores [`pext/`]
+        + Have to lift this over to hg38
 2. Variant Specific Databases -- Need to generate annotations for each VCF as variant loci/values will not be identical. These annotations are stored alongside the vcf file, with a changed suffix like `ukbb_plink.*`, where * is the name of the information within:
-* VQSR annotations [`ukbb_plink.vqsr/`]
-** For the purposes of UKBB this amounts to a 'fake' list of VQSR values for each variant as we "assume" that these variants were already filtered to a high sensitivity/specificity. This just ensures that all variants pass default VQSR filtering in the java pipeline
-* VEP annotations [`ukbb_plink.vep/`]
-* Supplemental CADD annotations [`ukbb_plink.cadd/`]
+    * VQSR annotations [`ukbb_plink.vqsr/`]
+        + For the purposes of UKBB this amounts to a 'fake' list of VQSR values for each variant as we "assume" that these variants were already filtered to a high sensitivity/specificity. This just ensures that all variants pass default VQSR filtering in the java pipeline
+    * VEP annotations [`ukbb_plink.vep/`]
+    * Supplemental CADD annotations [`ukbb_plink.cadd/`]
 
 All of the basic annotation is being done in root directory. As noted above, per-vcf annotations are located in `./vcfs/`. The actual "mashing together" of annotations will be performed by a [java pipeline](#3.-running-the-variant-engine).
 
-*Note*: _Many_ of the below commands will take a long time, either due to long download times or to actual processing time. It is highly recommended to run these with some sort of parallel compute architecture. Nonetheless, all of these commands should be runnable on a local machine.
+**Note**: _Many_ of the below commands will take a long time, either due to long download times or to actual processing time. It is highly recommended to run these with some sort of parallel compute architecture. Nonetheless, all of these commands should be runnable on a local machine.
 
 ## 3A. Create Required Directory Structure
 
@@ -122,7 +125,7 @@ This code has two ways to function, depending on if you have the gnomAD *v3* sit
 
 1. a web-enabled version of bcftools to stream sites (slower, but no storage needed).
 2. or you can download your own local version (can be used for other projects).
-** Make sure you download the .tbi index as well!
+    * Make sure you download the .tbi index as well!
 
 gnomAD v3 sites are available here: `https://storage.googleapis.com/gnomad-public/release/3.0/vcf/genomes/gnomad.genomes.r3.0.sites.vcf.bgz`
 
@@ -290,7 +293,7 @@ git checkout release/97
 
 New-ish builds should be OK, but have not been tested. VEP has to be run differently for each genome build (due to differences b/w the VEP cache/LOFTEE for each genome build). This is mostly handled by the provided script `scripts/make_chr_sites.pl`.
 
-*BIG Note*: This paths within this script MUST be edited to fit any local VEP build. 
+**Big Note**: This paths within this script MUST be edited to fit any local VEP build. 
 
 I run VEP annotation in 322 chunks (dictated by bedtools makewindows), but the important part is the actual command run by `make_chr_sites.pl` to ensure formating is consistent with the downstream code.
 
@@ -300,15 +303,15 @@ This script requires:
 2. bcftools & the bcftools plugin split-vep
 3. plink
 
-A *note* on LOFTEE:
+A **Note** on LOFTEE:
 
 The most complicated part of getting VEP to work was building loftee for GRCh38. Ensure you have a plugins dir for VEP as described [here](https://www.ensembl.org/info/docs/tools/vep/script/vep_plugins.html). Some tips when doing this:
 
-1. Pull the grch38 version of Konrad's git repo: [loftee](https://github.com/konradjk/loftee)
-2. Download each of the required files for hg38: [loftee hg38 ftp](https://personal.broadinstitute.org/konradk/loftee_data/GRCh38/)
-** human ancestor
-** sql database
-** GERP database
+1. Pull the grch38 version of Konrad's [git repo](https://github.com/konradjk/loftee):
+2. Download each of the required files [for hg38](https://personal.broadinstitute.org/konradk/loftee_data/GRCh38/):
+    * human ancestor
+    * sql database
+    * GERP database
 3. For loftee Hg38 to run, it needs additional perl packages, most of which can easily be installed easily via cpan (not going to list here). The only one that was an issue was Bio::DB::BigWig, which has a whole custom setup to follow. I fixed this by installing an older version of the "Kent" UCSC repo [v334](https://github.com/ucscGenomeBrowser/kent/tree/v334_branch) as referenced in [this issue](https://github.com/GMOD/GBrowse-Adaptors/issues/17). This also requires you to edit a file when installing kent as noted in the same issue.
 
 ```{bash Run VEP, eval = F}
@@ -344,15 +347,20 @@ This code block is almost _identical_ to the one that is the "Curating Genelists
 
 Reiterating what gene lists that we use here:
 
-1. pLI information from the [gnomAD project](https://storage.googleapis.com/gnomad-public/release/2.1.1/constraint/gnomad.v2.1.1.lof_metrics.by_gene.txt.bgz).
-2. s~het~ from [Weghorn et al.](https://doi.org/10.1093/molbev/msz092). The reference file is included in this repository (`raw_data/genelist/shet.weghorn.txt`).
-3. ENSEMBL-downloaded resources from [BioMart](https://www.ensembl.org/biomart/martview/0511514c231557b5d24ace4e8f7862e0).
+1. ENSEMBL-downloaded resources from [BioMart](https://www.ensembl.org/biomart/martview/0511514c231557b5d24ace4e8f7862e0).
+2. pLI information from the [gnomAD project](https://storage.googleapis.com/gnomad-public/release/2.1.1/constraint/gnomad.v2.1.1.lof_metrics.by_gene.txt.bgz).
+3. s~het~ from [Weghorn et al](https://doi.org/10.1093/molbev/msz092). The reference file is included in this repository (`raw_data/genelist/shet.weghorn.txt`).
 
-*Note*: These scripts assume you have `curl` installed on your system, which _should_ be true if you are using macos and most *nix systems. Please change the scripts below if this is not the case.
+**Note**: These scripts assume you have `curl` installed on your system, which _should_ be true if you are using macos and most *nix systems. Please change the scripts below if this is not the case.
 
 ### Download Resources from BioMart
 
-```{r Generate biomart resources}
+```{r Generate biomart resources, warning=FALSE}
+
+## First and only place code is generated
+library(biomaRt)
+library(data.table)
+library(tidyverse)
 
 ## Hg19
 ensembl <- useMart("ensembl", host="http://grch37.ensembl.org", dataset = "hsapiens_gene_ensembl")
@@ -445,13 +453,13 @@ This annotation engine requires all flags, and descriptions can also be seen by 
 * genelist: This is the file created above: `hg38.coordinates.txt`
 * gene: An integer between 1 and the number of genes in hg38.coordinates.txt (currently 18,756 genes).
 * genomeversion: The version of the genome being used. This should always be hg38 for UKBiobank data, but can be changed to Hg19 for other datasets. This takes care of two things
-** Tells which annotation set to use at `annotations/hg**/`
-** Also is a hacky way that I handle the 'chr' prefix for chromosome IDs typical of hg38 VCFs. I currently don't have a way to deal with hg38 VCFs that don't use 'chr' and, for hg19, vice versa.
+    + Tells which annotation set to use at `annotations/hg**/`
+    + Also is a hacky way that I handle the 'chr' prefix for chromosome IDs typical of hg38 VCFs. I currently don't have a way to deal with hg38 VCFs that don't use 'chr' and, for hg19, vice versa.
 * vcf: path to the UK Biobank VCF we downloaded above, with annotations at the correct locus
 * samples: list of samples to include in annotations, with one ID per line.
-** This is simply the output of `bcftools query -l ukbb_plink.vcf.gz`
-** Sample IDs must match identically to those found in the header. UKBiobank WES VCF IDs look like "123456_123456", where 123456 is the eid of the individual.
-** This is important to get correct, as this is how both AF is calculated and how individuals are included in the final output.
+    + This is simply the output of `bcftools query -l ukbb_plink.vcf.gz`
+    + Sample IDs must match identically to those found in the header. UKBiobank WES VCF IDs look like "123456_123456", where 123456 is the eid of the individual.
+    + This is important to get correct, as this is how both AF is calculated and how individuals are included in the final output.
 * maf: maf filter to apply to variants. This _only_ filters based on the variants in the VCF file, not provided gnomAD MAFs. Can set higher, but will generate a *very* large file.
 * outdir: Where to store per-gene txt files like: `results_ukbb_wes/ENSG00000003056.rare_variants.tsv`
 * rootdir: Where are annotations we created above stored?
