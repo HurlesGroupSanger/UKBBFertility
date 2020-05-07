@@ -29,6 +29,8 @@ This code makes use of the following tools:
 
 `https://fake.ukbbiobank_url.com`
 
+You can view a compiled html version of this document with all code run either within this repository at `compiled_htmls/SNVCalling_Filtering.html` or on [github](https://htmlpreview.github.io/?https://github.com/eugenegardner/UKBBFertility/blob/master/compiled_html/SNVCalling_Filtering.html).
+
 # 2. Required Exome Variant Files
 
 First step to analyse UK Biobank WES data is to actually acquire the variant files themselves. Please see [this page](http://biobank.ndph.ox.ac.uk/showcase/field.cgi?id=23160) for additional information on accquiring required files. Please note that conversion to VCF format requires [PLINKv1.9 or PLINKv2](https://www.cog-genomics.org/plink2) and [tabix](http://www.htslib.org/doc/tabix.html). 
@@ -357,10 +359,15 @@ Reiterating what gene lists that we use here:
 
 ```{r Generate biomart resources, warning=FALSE}
 
+## Load packages silently
+load.package <- function(name) {
+  suppressMessages(suppressWarnings(library(name, quietly = T, warn.conflicts = F, character.only = T)))
+}
+
 ## First and only place code is generated
-library(biomaRt)
-library(data.table)
-library(tidyverse)
+load.package("biomaRt")
+load.package("data.table")
+load.package("tidyverse")
 
 ## Hg19
 ensembl <- useMart("ensembl", host="http://grch37.ensembl.org", dataset = "hsapiens_gene_ensembl")

@@ -1,7 +1,7 @@
 ---
-title: "PhenotypeTesting"
+title: "Phenotype Testing"
 author: "Eugene Gardner"
-date: "22/04/2020"
+date: "05 May 2020"
 output: 
   html_document:
     toc: true
@@ -16,20 +16,31 @@ This document contains data UKBB and comparisons between and within this data to
 
 **Big Note**: You also need to have access to UKBiobank, but this script is agnostic to the UKBiobank application number. You should be able to download a bulk phenotype file and, if it contains the correct phenotypes as referred to in the manuscript and in the file `rawdata/phenofiles/fields_to_extract.txt`, you should be able to reproduce our data and figures. 
 
+You can view a compiled html version of this document with all code run either within this repository at `compiled_htmls/PhenotypeTesting.html` or on [github](https://htmlpreview.github.io/?https://github.com/eugenegardner/UKBBFertility/blob/master/compiled_html/PhenotypeTesting.html).
+
 ## 1A. Libraries
 
 ```{r setup}
 
-knitr::opts_chunk$set(echo = TRUE, message = FALSE)
-library(biomaRt) ## Get gene lists we need
-library(readxl) ## Read Supplemental Excel tables
-library(data.table) ## Better than data.frame
-library(patchwork) ## Arranging ggplots
-library(broom) ## Makes getting covars out of lm much tidier
-library(meta) ## For doing meta analysis
-library(mratios) ## Need this to calculate 95% CIs for ratios of two means
-library(svglite) ## Need to create figure 3 properly (ggsave doesn't like anything with an alpha)
-library(tidyverse) ## Takes care of ggplot, tidyr, dplyr, and stringr
+knitr::opts_chunk$set(
+	echo = TRUE,
+	message = FALSE,
+	warning = FALSE ## Warnings turned off to squelch unecessary ggplot noise in kintted document. Have checked all for accuracy.
+)
+## Quietly Load Libraries
+load.package <- function(name) {
+  suppressMessages(suppressWarnings(library(name, quietly = T, warn.conflicts = F, character.only = T)))
+}
+
+load.package("biomaRt") ## Get gene lists we need
+load.package("readxl") ## Read Supplemental Excel tables
+load.package("data.table") ## Better than data.frame
+load.package("patchwork") ## Arranging ggplots
+load.package("broom") ## Makes getting covars out of lm much tidier
+load.package("meta") ## For doing meta analysis
+load.package("mratios") ## Need this to calculate 95% CIs for ratios of two means
+load.package("svglite") ## Need to create figure 3 properly (ggsave doesn't like anything with an alpha)
+load.package("tidyverse") ## Takes care of ggplot, tidyr, dplyr, and stringr
 ```
 
 ## 1B. Themes
@@ -88,7 +99,7 @@ Example code for downloading and initial processing UKBB phenotype file. None of
 
 This code chunk is not evaluated here but is provided for replication purposes. This code chunk assumes that the user has already gained access to, and [downloaded](http://biobank.ndph.ox.ac.uk/showcase/), relevant phenotype fields and has aquired the encoded phenotype file (like ukb00000.enc). The tools used below are also available via the [UKBiobank datashowcase website](http://biobank.ndph.ox.ac.uk/showcase/download.cgi). More information on downloading can be found [here](https://biobank.ctsu.ox.ac.uk/~bbdatan/Accessing_UKB_data_v2.1.pdf).
 
-```{bash get UKBB phenotype file, eval = F}
+```{bash Get UKBB Phenotype File, eval = F}
 
 ## First step involves downloading and decoding individual phenotype data. Keyvalue is the key provided via email when you apply for bulk download. This will create a decoded file ukb00000.enc_ukb
 ukbunpack ukb00000.enc <keyvalue>
@@ -108,7 +119,7 @@ This code chunk extracts phenotypes of relevance from the master phenotype file 
 
 This script is slower than it should be due to an issue with text format encoding of the UKBB-created TSV file on MacOS. If running this code on a UNIX system, would suggest switching the 'exec' call at the bottom of this script to use cut for additional speed. It should mean the script executes in ~30s rather than 5mins.
 
-```{bash extract phenotypes, eval = F}
+```{bash Extract Phenotypes, eval = F}
 
 ./scripts/extract_phenotypes.pl
 
@@ -121,7 +132,7 @@ Again, this is just an example on how relatedness information is accquired from 
 1. Download the relatedness file using the (ukbgene)[http://biobank.ndph.ox.ac.uk/showcase/refer.cgi?id=664] tool
 2. Running the provided script to generate a list of individuals to filter - at: `./scripts/get_relateds.R`.
 
-```{bash process relatedness, eval = F}
+```{bash Process Relatedness, eval = F}
 
 ## 1. Run ukbgene rel. This will download a file like: ukbXXXXX_rel_sYYYYYY.dat, where X represents your application ID, and 488288 represents the file version
 ukbgene rel
@@ -137,14 +148,14 @@ perl -ne 'if ($_ =~ /\"(\d{7})\"/) {print "$1\n";}' raw_data/phenofiles/relateds
 
 Read in the master phenotype and related individuals file that was created in [the previous section](#2._generating_required_text_files)
 
-```{r load master phenotype file}
+```{r Load Master Phenotype File}
 
 UKBB.raw.phenotypes <- fread("rawdata/phenofiles/ukbb_phenotypes.txt")
 UKBB.raw.phenotypes[,eid:=as.character(eid)]
 
 ```
 
-```{r load relatedness file}
+```{r Load Relatedness File}
 
 related.individuals <- fread("rawdata/phenofiles/relateds.txt", header = F)
 setnames(related.individuals,"V1","eid")
@@ -158,7 +169,7 @@ Grabbing generic phenotypes age, sex, ancestry, European ancestry status and add
 
 This also filters out individuals that are not broadly European.
 
-```{r process generic phenotypes}
+```{r Process Generic Phenotypes}
 
 ## Data table of all UKBB population data:
 PCAs<-c(1:10)
@@ -191,7 +202,7 @@ rm(PCAs,fields,i)
 
 ## 3B. Fertility
 
-```{r Load Data, fig.height=5, fig.width=4}
+```{r Fertility, fig.height=5, fig.width=4}
 
 fertility.metrics <- UKBB.raw.phenotypes[,c("eid",
                                             "2405-0.0", ## Children Fathered
@@ -278,7 +289,7 @@ This section looks at UKBB "Fluid Intelligence".
 
 The field of relevance for us is 20016-0.0. There is no array data (only 1 test was done, but 3 instances - we're using instance 0).
 
-```{r process fluid intelligence}
+```{r Fluid Intelligence}
 
 ## Grab fluid intel from the raw phenotypes:
 fluid.intel.table <- UKBB.raw.phenotypes[,c("eid","20016-0.0")]
@@ -340,7 +351,7 @@ rm(educational.attainment)
 
 ## 3E. Household Income
 
-```{r income data}
+```{r Income data}
 
 income.data <- UKBB.raw.phenotypes[,c("eid","738-0.0")]
 
@@ -391,7 +402,7 @@ The ICD-10 codes that I have used and their equivalancies to the MHQ section are
 
 This set of data needs to be processed in two steps, as I use perl to process the actual phenotypes (it's much easier than in R). Need to first print out a text file of the raw phenotypes I need, process it with Perl, and then read back in and add to the final phenotype table.
 
-```{r print ICD10 Data}
+```{r Print ICD10 Data}
 
 cols.to.print <- c("eid",names(UKBB.raw.phenotypes)[grep("41202",names(UKBB.raw.phenotypes))],names(UKBB.raw.phenotypes)[grep("41204",names(UKBB.raw.phenotypes))])
 icd.data <- UKBB.raw.phenotypes[,..cols.to.print]
@@ -440,7 +451,7 @@ This section is attempting to replicate the general codings of [this](https://ja
 
 Processing of MH Traits functions similarly to ICD10 above, where I have to print a file, processes with perl and then read it back in:
 
-```{r print MHQ data}
+```{r Print MHQ data}
 
 cols.to.print <- c("eid","20401-0.0","20406-0.0","20456-0.0","20503-0.0",names(UKBB.raw.phenotypes)[grep("20544",names(UKBB.raw.phenotypes))])
 mhq.data <- UKBB.raw.phenotypes[,..cols.to.print]
@@ -454,7 +465,7 @@ write.table(mhq.data,file="rawdata/phenofiles/mhq.data.txt",sep="\t",row.names=F
 
 ```
 
-```{r process MHQ}
+```{r Process MHQ}
 
 mhq.data <- fread("rawdata/phenofiles/mhq.data.processed.txt")
 mhq.data[,eid:=as.character(eid)]
@@ -592,18 +603,18 @@ mv rawdata/genelists/hg38_to_hg19_ENSG.2.txt rawdata/genelists/hg38_to_hg19_ENSG
 This section of the document is not evaluated, as we need to acquire disease gene resources from three locations. The actual acquisition of these files is trivial, but did not want to attempted to make reproduceable due to potential links breaking. If this section needs to be reproduced, download the resources at the _rough_ following locations and run the code in this section. Otherwise, move to the next section where the file produced by this section has already been generated. Locations to place necessary files and file dates used in the manuscript are listed below:
 
 1. Clinvar - https://ftp.ncbi.nlm.nih.gov/pub/clinvar/vcf_GRCh37/archive_2.0/2019/clinvar_20191003.vcf.gz
-		+  `rawdata/genelists/clinvar.vcf.gz`
-		+  date: October 3, 2019
+    +  `rawdata/genelists/clinvar.vcf.gz`
+    +  date: October 3, 2019
 2. DDG2P - http://www.ebi.ac.uk/gene2phenotype/downloads/DDG2P.csv.gz
-		+  `rawdata/genelists/DDG2P.csv`
-		+  date: November 12, 2019
+    +  `rawdata/genelists/DDG2P.csv`
+    +  date: November 12, 2019
 3. OMIM - https://www.omim.org/downloads
-		+  `rawdata/genelists/morbidmap.txt`
-		+  date: October 8, 2019
+    +  `rawdata/genelists/morbidmap.txt`
+    +  date: October 8, 2019
 
 **Note**: To download OMIM morbid map you will need to register and place a copy of this file at: `rawdata/genelists/morbidmap.txt`
 
-```{r process disease genes, eval = F}
+```{r Process Disease Genes, eval = F}
 ## Clinvar
 clinvarVCFfiltered <- read_tsv("rawdata/genelists/clinvar.vcf.gz", comment = '#', col_names = F, col_types = 'cccccccccccccc') %>% 
   mutate(PHEN = str_remove(str_extract(X8, 'CLNDN=[^;]*;'), "CLNDN=")) %>% 
@@ -748,7 +759,7 @@ It was [recently identified](https://onlinelibrary.wiley.com/doi/full/10.1111/ah
 
 **Note**: This code requires bedtools to be installed and in your PATH.
 
-```{bash get bad genes}
+```{bash Get Bad Genes}
 ## Note -- this may break if you do not have one of these files!
 source ~/.bash_profile
 source ~/.bashrc
@@ -766,7 +777,7 @@ perl -ane 'chomp $_; print "$F[1]\t$F[2]\t$F[3]\t$F[0]\n";' rawdata/genelists/hg
 scripts/matcher.pl -file1 rawdata/genelists/hg38_to_hg19_ENSG.txt -file2 rawdata/ukbb_missing_baits/intersected.txt -col2 3 -r > rawdata/ukbb_missing_baits/intersected.hg19.txt
 ```
 
-```{r new baits, fig.height=4, fig.width=8}
+```{r Check Affected Baits, fig.height=4, fig.width=8}
 
 new.baits <- fread("rawdata/ukbb_missing_baits/intersected.hg19.txt")
 setnames(new.baits,names(new.baits),c("chr","start","end","hg38.GENE","baits.hit","hg19.GENE","hg19.GENE.2"))
@@ -863,7 +874,7 @@ Section tbd, but need to make sure to get two files:
 
 This data is not going to be available until final publication of the manuscript. This is due to guidelines from UK Biobank that do not allow returned data fields for studies not yet through peer review. We cannot make these calls available as part of this repository due to patient/subject protection.
 
-```{bash get SNVs, eval = F}
+```{bash Get SNVs, eval = F}
 
 
 
@@ -877,7 +888,7 @@ SNV and InDel annotation is handled by the document `SNVCalling_Filtering.Rmd` w
 
 This section does the actual loading of UKBB SNV data into R.
 
-```{r load variant counts}
+```{r Load SNV Data}
 
 load.data <- function(counts.file, 
                       samples.file, 
@@ -1038,7 +1049,7 @@ And this code block does the calculation for s~het~ listed in the manuscript:
 
 $$s_{het[i,v]}=1-\prod_{g} (1-s_{het[i,v,g]})$$
 
-```{r quantitative sHET SNV}
+```{r Quantitative sHET SNV Calculation}
 
 quantify.shet.snv <- function(maf, type, to.remove=c()) {
     
@@ -1199,7 +1210,7 @@ Section tbd, but need to make to get two files (and place at the following locat
 
 This data is not going to be available until final publication of the manuscript. This is due to guidelines from UK Biobank that do not allow returned data fields for studies not yet through peer review. We cannot make these calls available as part of this repository due to patient/subject protection.
 
-```{bash get SNVs, eval = F}
+```{bash Get CNVs, eval = F}
 
 
 
@@ -1230,11 +1241,9 @@ UKBB Samples dropped here are derived from a few different sources:
 1. Those who failed CNV QC (n = 2,591 individuals)
 2. They were part of a batch with no calls (currently only know of batch18 - n = 4,620)
 
-All other individuals are included if they are white British ancestry and unrelated (as set in the above 'Setting Individuals To Use' section).
+All other individuals are included if they have broadly European ancestry and are unrelated (as set in the above 'Setting Individuals To Use' section).
 
-There are also 75 individuals which exist in the CNV file but do not have IDs. I'm fairly certain these are individuals with removed consent (so good they aren't included!)
-
-```{r Build Modified annotated.cnvs}
+```{r Build CNV Calls}
 
 build.omics.map <- function(cnv.file, id.name, merge.key) {
 
@@ -1546,7 +1555,7 @@ plot.result <- function(data, binary, num.tests, ymin, ymax, y.lab) {
 
 ### Main Regression
 
-```{r fertility logistic model, fig.height=7, fig.width=8}
+```{r Childlessness Regression, fig.height=7, fig.width=8}
 results.fertility <- data.table(crossing(maf = c(0.001,0),
                                    gene.list = c("product_sHET"),
                                    y.var = c("children.fathered","live.births"),
@@ -1564,7 +1573,7 @@ plot.result(results.fertility,T,20,0,1.4, "# of Individuals\nWith sHET\n> 0.15")
 
 This tests the relationship of s~het~ burden with actual number of children:
 
-```{r binary children,  fig.height=7, fig.width=8}
+```{r Linear Childlessness Regression,  fig.height=7, fig.width=8}
 results.fertility.linear <- data.table(crossing(maf = c(0.001,0),
                                      gene.list = "product_sHET",
                                      y.var = c("children.fathered","live.births"),
@@ -1578,7 +1587,7 @@ plot.result(results.fertility.linear,F,20,-1,0.5, "# of Individuals\nWith sHET\n
 
 #### Using Gene Lists Instead of Quantitative sHET
 
-```{r quantitative sHET, fig.height=7, fig.width=8}
+```{r Gene List Regression, fig.height=7, fig.width=8}
 results.fertility.genelists <- data.table(crossing(maf = c(0.001,0),
                                                    gene.list = names(gene.lists)[grep("highsHET|highPLI",names(gene.lists))],
                                                    y.var = c("children.fathered","live.births"),
@@ -1597,9 +1606,13 @@ paste0("Number of PTV Individuals Lost, sHET ≥ 0.9 : ", results.fertility[vari
 
 ```
 
-#### Only Individuals With >0 Children
 
-```{r Only gt 0 Children, fig.height=7, fig.width=8}
+
+#### Excluding Various Genes/Individuals
+
+##### Individuals With >0 Children
+
+```{r GT 0 Children Regression, fig.height=7, fig.width=8}
 results.fertility.zero <- data.table(crossing(maf = c(0.001,0), 
                                    gene.list = "product_sHET",
                                    y.var = c("children.fathered","live.births"),
@@ -1610,8 +1623,6 @@ results.fertility.zero[,c("var.beta","var.stderr","var.p","n.var","n.indvs"):=ru
 
 plot.result(results.fertility.zero,F,20,-1,0.5,"# of Individuals\nWith sHET\n> 0.15")
 ```
-
-#### Excluding Various Genes/Individuals
 
 ##### Male Infertility Genes
 
@@ -1646,7 +1657,7 @@ plot.result(results.excl.disease,T,70,0,1.4,"# of Individuals\nWith sHET\n> 0.15
 
 ##### Pathogenic CNV Carriers
 
-```{r fertility no pathogenic, fig.height=7, fig.width=8}
+```{r No Pathogenic Regression, fig.height=7, fig.width=8}
 
 ## Get individuals that carry a known pathogenic CNV
 ukbb.path.carriers <- unique(ukbb.annotated.cnvs.qcd[path.locus != "null" & filter.0.95.wes.support.score == T, eid])
@@ -1820,7 +1831,7 @@ rm(male, female, meta.analy.female, meta.analy.male, age.remove)
 
 ### Main Regression
 
-```{r Partner LM, fig.height=7, fig.width=8}
+```{r Partner Regression, fig.height=7, fig.width=8}
 results.partner <- data.table(crossing(maf = c(0.001,0), 
                                    gene.list = "product_sHET",
                                    y.var = "partner.in.house",
@@ -1855,7 +1866,7 @@ plot.result(results.cog,F,20,-1.4,0.5,"# of Individuals\nWith sHET\n> 0.15")
 
 ### Main Regression
 
-```{r Educational Attainment, fig.height=7, fig.width=8}
+```{r Educational Attainment Regression, fig.height=7, fig.width=8}
 results.ea <- data.table(crossing(maf = c(0.001,0), 
                                   gene.list = "product_sHET",
                                   y.var = "completed.college",
@@ -1972,10 +1983,10 @@ rm(mhq,icd)
 Conclusions from above are that the ICD-10 data is too sparse for us to be able to use it truly effectively. Also confirmed is that, in general, it also looks like the UKBB is healthier than the population as a whole (at least when comparing to Power et al.), which is a fairly obvious conclusion. With that in mind, we think we can only really do two different regressions:
 
 * Binary of do you have a disability that has been previously shown to be associated with [rare variant burden](https://www.sciencedirect.com/science/article/pii/S0002929718301630)?:
-		+  Schizophrenia, Autism, ADHD, Bipolar
-		+  Also have ID/DD, but we don't have that here...
+    +  Schizophrenia, Autism, ADHD, Bipolar
+    +  Also have ID/DD, but we don't have that here...
 * Binary of do you have a disability that Power et al has shown to have <0.8 drop in fertility for either gender?:
-		+  Schizophrenia, Autism, bipolar disorder, eating disorders
+    +  Schizophrenia, Autism, bipolar disorder, eating disorders
 
 For the purposes of this manuscript, we have gone for the former, although both have similar results. This code block adds a binary value for having any of those phenotypes ('ganna.binary') to our primary phenotype table.
 
@@ -2029,7 +2040,7 @@ rm(variant.counts.backup)
 
 #### Did Or Did Not Answer the MHQ
 
-```{r fig.height=7, fig.width=8}
+```{r Answered MHQ Regression, fig.height=7, fig.width=8}
 
 results.answered.mhq <- data.table(crossing(maf = c(0.001,0),
                                    gene.list = "product_sHET",
@@ -2044,7 +2055,7 @@ plot.result(results.answered.mhq,T,20,0,1.4,"# of Individuals\nWith sHET\n> 0.15
 
 #### Has an email
 
-```{r fig.height=8, fig.width=7}
+```{r Email Regression, fig.height=8, fig.width=7}
 
 results.email <- data.table(crossing(maf = c(0.001,0),
                                    gene.list = "product_sHET",
@@ -2115,7 +2126,7 @@ There is a flag in the function for excluding PCs. This is so that we can use th
 
 This will also return a 'fit model' for the expected trait that we can then feed into our simulations.
 
-```{r simple lm}
+```{r simple lm function for childlessness x phenotype}
 
 run.lm <- function(sex, x.var, add.covars=c(), inc.PCs = F) {
 
@@ -2313,7 +2324,7 @@ paste0("Contribution of sHET to Fitness (sex averaged): ",
 
 Partner at Home and Educational Attainment use a similar methodology to get estimates of fitness. As such, I wrote a single function to handle the calculation.
 
-```{r Increased Childlessness}
+```{r Increased Childlessness Function}
 
 ## Helper function to generate a given trait and age for a 'simulated' 
 ## individual given a probability of having that trait. 
@@ -2878,7 +2889,7 @@ paste0("Contribution of Cognition to Fitness: ",
        "%)")
 
 paste0("Predicted drop in IQ for sHET = 1 male  : " ,sprintf("%0.2f", model.cog[shet == 1 & sex == 1,100 - expected.iq_mid]))
-paste0("Predicted drop in IQ for sHET = 1 female: " ,sprintf("%0.2f", model.cog[shet == 2 & sex == 1,100 - expected.iq_mid]))
+paste0("Predicted drop in IQ for sHET = 1 female: " ,sprintf("%0.2f", model.cog[shet == 1 & sex == 2,100 - expected.iq_mid]))
 ```
 
 ## 6G. Fertility + Mental Health
@@ -3137,7 +3148,7 @@ We also don't estimate increased/decreased childlessness for same sex sexual beh
 
 ### Linear Model
 
-```{r Fertility + Same.Sex}
+```{r Same Sex Linear Model, fig.height=5, fig.width=12}
 
 ## Actual LM
 sex.diff.same.sex <- data.table(sexPulse=c(1,2))
@@ -3321,7 +3332,7 @@ make.meta.table <- function(data, is.linear,
 
 ### Figure 1.
 
-```{r fig.height=5, fig.width=7}
+```{r Main Text Figure 1, fig.height=5, fig.width=7}
 
 ## This just gets a forest plot for our primary childlessness logistic regression
 plot.a <- make.meta.table(results.fertility, F, b = 0.25)
@@ -3457,7 +3468,7 @@ plot.a[[1]][ variant.type == "META",paste0(Sex, " OR=",sprintf("%0.2f",var.beta)
 
 Effect of rare variants on various metrics:
 
-```{r fig.height=8.5, fig.width=7}
+```{r Main Text Figure 2, fig.height=8.5, fig.width=7}
 
 fig.partner <- make.meta.table(results.partner, F, title = "Partner at Home",show.x=F,b=0.25)
 fig.ea <- make.meta.table(results.ea, F, title = "Edu. Attainment",b=0.25)
@@ -3477,7 +3488,7 @@ paste0("Number of Fluid Intel Indv: ", sum(fig.cog[[1]][variant.type == "META",n
 
 ### Figure 3.
 
-```{r Figure 3, fig.height=3, fig.width=4}
+```{r Main Text Figure 3, fig.height=3, fig.width=4}
 
 figure.3 <- ggplot(model.fertility, aes(x = shet, group = sexPulse, fill = sexPulse)) + geom_line(aes(y = ratio_mid, colour = sexPulse), size=2) + geom_ribbon(aes(ymin= ratio_lower, ymax = ratio_upper), alpha = 0.5) + scale_alpha_continuous(range = c(0,1)) + sex.colours.colour + sex.colours.fill + geom_abline(intercept=1,slope=-1,linetype=2) + scale_x_continuous(name=expression(bold(s[het])), limits = c(0,1), expand = c(0,0)) + scale_y_continuous(name = "Predicted Reduction in Fitness", limits = c(0,1.05)) + theme.figures.legend
 
@@ -3489,7 +3500,7 @@ ggsave("figures/Figure3.svg",figure.3,width=4,height=3,units = "in")
 
 ### Text-based ORs
 
-```{r fig.height=3.5, fig.width=7}
+```{r Text Based ORs}
 
 ## no male fertility genes
 no.male.fertility.plot <- make.meta.table(results.excl.male, F, gene.list = "product_sHET_no_male_infertility")
@@ -3520,7 +3531,7 @@ no.disease.plot[[1]][Sex == "Male" & variant.type == "META",paste0(Sex," Disease
 
 CNVs Per Individual Figures
 
-```{r fig.height=8, fig.width=8}
+```{r Supp Fig 1, fig.height=8, fig.width=8}
 
 ukbb.annotated.cnvs.qcd[,dummy:=1]
 
@@ -3663,7 +3674,7 @@ rm(quant.table)
 
 SNV Counts Per Individual.
 
-```{r fig.height=5, fig.width=8.5}
+```{r Supp Fig 2, fig.height=5, fig.width=8.5}
 
 UKBB.counts <- count.variants(variants.UKBB,samples.UKBB,0.001)
 UKBB.counts[,CSQ:=if_else(CSQ == "LOF_HC","PTVs",if_else(CSQ == "MIS","Missense",if_else(CSQ == "SYN","Synonymous",as.character(NA))))]
@@ -3692,7 +3703,7 @@ paste0("Number of SNV/INDel Variants: ", nrow(variants.UKBB[,]))
 
 #### Figure 3.
 
-```{r fig.height=3, fig.width=8.5}
+```{r Supp Fig 3, fig.height=3, fig.width=8.5}
 
 linear.data <- make.meta.table(results.fertility.linear, T, ymin = -1.15, ymax= 0.25, block = -1, p.pos = -1)
 linear.data
@@ -3705,7 +3716,7 @@ linear.data[[1]][variant.type == "META",paste0(Sex, "s have ",sprintf("%0.2f",ab
 
 #### Figure 4.
 
-```{r fig.height=3, fig.width=8.5}
+```{r Supp Fig 4, fig.height=3, fig.width=8.5}
 
 remove.zero <- make.meta.table(results.fertility.zero, T, ymin = -1.15, ymax= 0.25, block = -1, p.pos = -1)
 remove.zero
@@ -3716,7 +3727,7 @@ ggsave("figures/supplement/SuppFig4.png",remove.zero[[2]], dpi = 600, height = 3
 
 #### Figure 5.
 
-```{r fig.height=6, fig.width=8.5}
+```{r Supp Fig 5, fig.height=6, fig.width=8.5}
 
 gene.data.pli <- make.meta.table(results.fertility.genelists[gene.list == "highPLI"], F, gene.list = "highPLI", alt.y.axis = "Odds Ratio for loss of 1 high (>0.9) pLI gene",ymin=0.4,ymax=1.25,p.pos = 0.5,block = 0.4)
 gene.data.pli[[2]] <- gene.data.pli[[2]] + theme(legend.position="blank")
@@ -3733,7 +3744,7 @@ ggsave("figures/supplement/SuppFig5.png",combined.gene, dpi = 600, height = 5, w
 
 #### Figure 6.
 
-```{r fig.height=3, fig.width=8.5}
+```{r Supp Fig 6, fig.height=3, fig.width=8.5}
 
 high.maf.data <- make.meta.table(results.fertility, F, allele.freq = 1e-3, b=0.25)
 high.maf.data
@@ -3744,7 +3755,7 @@ ggsave("figures/supplement/SuppFig6.png",high.maf.data[[2]], dpi = 600, height =
 
 #### Figure 7.
 
-```{r fig.height=6, fig.width=8.5}
+```{r Supp Fig 7, fig.height=6, fig.width=8.5}
 
 res.age[,Sex:=factor(y.var,levels=c("children.fathered","live.births"),labels=c("Male","Female"))]
 res.age[,agePulse:=factor(age,levels=c("ALL","60","50","40"),labels=c("All Ages","60-70","50-60","40-50"))]
@@ -3778,7 +3789,7 @@ ggsave("figures/supplement/SuppFig7.png",plot.ages, dpi = 600, height = 6, width
 
 #### Figure 8.
 
-```{r fig.height=4, fig.width=8.5}
+```{r Supp Fig 8, fig.height=4, fig.width=8.5}
 
 plottable <- copy(results.fertility)
 
@@ -3816,7 +3827,7 @@ ggsave("figures/supplement/SuppFig8.png",plot.all.variants, dpi = 600, height = 
 
 #### Figure 9.
 
-```{r fig.height=10, fig.width=8}
+```{r Supp Fig 9, fig.height=10, fig.width=8}
 
 ## Has a Private DEL
 plot.testis.del.shet.wilcox <- wilcox.test(log.mean ~ has.del, data = shet.genes.expr[sHET.val > 0.15],alternative=c("less"))
@@ -3887,7 +3898,7 @@ ggsave("figures/supplement/SuppFig9.png",plot.testis, dpi = 300, height = 10, wi
 
 #### Figure 10.
 
-```{r fig.height=6, fig.width=8}
+```{r Supp Fig 10, fig.height=6, fig.width=8}
 
 plot.betas <- function(x.var, type, add.covars = c(), ymin = 0, ymax = 2) {
   
@@ -3946,7 +3957,7 @@ mhq.beta.plot[[1]][,paste0(sexPulse, " MH OR=",sprintf("%0.2f",beta), " [95% CI 
 
 #### Figure 11.
 
-```{r fig.height=3, fig.width=8.5}
+```{r Supp Fig 11, fig.height=3, fig.width=8.5}
 
 same.sex <- make.meta.table(results.same.sex, F, b=0.5, ymin=-0.8, ymax = 4.5, p.pos = -0.2, block = -0.5)
 same.sex
@@ -3958,7 +3969,7 @@ same.sex[[1]][Sex == "Male" & variant.type == "META",paste0(Sex, " Same Sex OR="
 
 #### Figure 12.
 
-```{r fig.height=15, fig.width=14}
+```{r Supp Fig 12, fig.height=15, fig.width=14}
 
 ## Fertility
 
@@ -3996,11 +4007,11 @@ plot.mh <- ggplot(model.mhq, aes(x = shet, group = sexPulse, fill = sexPulse)) +
 
 plot.fert.mh <- ggplot(model.mhq, aes(x = shet, group = sexPulse, fill = sexPulse)) + geom_line(aes(y = ratio_mid, colour = sexPulse), size=2) + geom_ribbon(aes(ymin= ratio_lower, ymax = ratio_upper), alpha = 0.5) + scale_alpha_continuous(range = c(0,1)) + sex.colours.colour + sex.colours.fill + geom_abline(intercept=1,slope=-1,linetype=2) + scale_x_continuous(name=expression(bold(s[het])), limits = c(0,1), expand = c(0,0)) + scale_y_continuous(name = "Predicted Fitness", limits = c(0.8,1.05)) + theme.figures.legend
 
-inc.plot.scizo <- ggplot(inc.mht[type == "scizo"], aes(x = shet, group = sexPulse, fill = sexPulse)) + geom_line(aes(y = mid, colour = sexPulse), size=2, position=position_dodge()) + geom_ribbon(aes(ymin= lower, ymax = upper),alpha=0.5) + scale_alpha_continuous(range = c(0,1)) + sex.colours.colour + sex.colours.fill + scale_x_continuous(name=expression(bold(s[het])), limits = c(0,1), expand = c(0,0)) + scale_y_continuous(name = "Predicted Incidence Schizo.", limits = c(0,0.1)) + theme.figures.legend
+inc.plot.scizo <- ggplot(inc.mht[type == "scizo"], aes(x = shet, group = sexPulse, fill = sexPulse)) + geom_line(aes(y = mid, colour = sexPulse), size=2) + geom_ribbon(aes(ymin= lower, ymax = upper),alpha=0.5) + scale_alpha_continuous(range = c(0,1)) + sex.colours.colour + sex.colours.fill + scale_x_continuous(name=expression(bold(s[het])), limits = c(0,1), expand = c(0,0)) + scale_y_continuous(name = "Predicted Incidence Schizo.", limits = c(0,0.1)) + theme.figures.legend
 
-inc.plot.asd <- ggplot(inc.mht[type == "asd"], aes(x = shet, group = sexPulse, fill = sexPulse)) + geom_line(aes(y = mid, colour = sexPulse), size=2, position=position_dodge()) + geom_ribbon(aes(ymin= lower, ymax = upper),alpha=0.5) + scale_alpha_continuous(range = c(0,1)) + sex.colours.colour + sex.colours.fill + scale_x_continuous(name=expression(bold(s[het])), limits = c(0,1), expand = c(0,0)) + scale_y_continuous(name = "Predicted Incidence ASD", limits = c(0,0.1)) + theme.figures.legend
+inc.plot.asd <- ggplot(inc.mht[type == "asd"], aes(x = shet, group = sexPulse, fill = sexPulse)) + geom_line(aes(y = mid, colour = sexPulse), size=2) + geom_ribbon(aes(ymin= lower, ymax = upper),alpha=0.5) + scale_alpha_continuous(range = c(0,1)) + sex.colours.colour + sex.colours.fill + scale_x_continuous(name=expression(bold(s[het])), limits = c(0,1), expand = c(0,0)) + scale_y_continuous(name = "Predicted Incidence ASD", limits = c(0,0.1)) + theme.figures.legend
 
-inc.plot.bipolar <- ggplot(inc.mht[type == "bipolar"], aes(x = shet, group = sexPulse, fill = sexPulse)) + geom_line(aes(y = mid, colour = sexPulse), size=2, position=position_dodge()) + geom_ribbon(aes(ymin= lower, ymax = upper),alpha=0.5) + scale_alpha_continuous(range = c(0,1)) + sex.colours.colour + sex.colours.fill + scale_x_continuous(name=expression(bold(s[het])), limits = c(0,1), expand = c(0,0)) + scale_y_continuous(name = "Predicted Incidence Bipolar Dis.", limits = c(0,0.1)) + theme.figures.legend
+inc.plot.bipolar <- ggplot(inc.mht[type == "bipolar"], aes(x = shet, group = sexPulse, fill = sexPulse)) + geom_line(aes(y = mid, colour = sexPulse), size=2) + geom_ribbon(aes(ymin= lower, ymax = upper),alpha=0.5) + scale_alpha_continuous(range = c(0,1)) + sex.colours.colour + sex.colours.fill + scale_x_continuous(name=expression(bold(s[het])), limits = c(0,1), expand = c(0,0)) + scale_y_continuous(name = "Predicted Incidence Bipolar Dis.", limits = c(0,0.1)) + theme.figures.legend
 
 blank <- ggplot() + geom_text(label='N/A',aes(x=0.4,y=0.5),size=5) + scale_x_continuous(name = "", limits=c(0,1)) + scale_y_continuous(name = "", limits=c(0,1)) + theme.figures.legend + theme(axis.line=element_blank(), panel.grid.major=element_blank(), axis.text.x=element_blank(), axis.text.y=element_blank(), axis.ticks=element_blank())
 
@@ -4020,7 +4031,7 @@ ggsave("figures/supplement/SuppFig12.png",plot.predictions, dpi = 300, height = 
 
 #### Figure 13.
 
-```{r fig.height=4, fig.width=8}
+```{r Supp Fig 13, fig.height=4, fig.width=8}
 
 cog.fit.plot <- ggplot(cog.raw) + geom_ribbon(data = cog.raw[newiq<120],aes(x=newiq, ymin=Mean-ci,ymax=Mean+ci),colour="grey",alpha=0.3) + geom_line(data = cog.raw[newiq<120],aes(x=newiq, y=Mean),colour="black", size = 1) + geom_line(aes(x = newiq, y=pred.log),colour="red", size = 0.8, linetype = 2) + scale_x_continuous(name = "IQ", limits=c(0,140)) + scale_y_continuous(name = "Average Children", limits=c(-0.1,2)) + scale_alpha_continuous(range=c(0,1)) + theme.figures.legend
 
@@ -4036,7 +4047,7 @@ ggsave("figures/supplement/SuppFig13.png",cog.fit.plots, dpi = 600, height = 5, 
 
 #### Figure 14.
 
-```{r fig.height=6, fig.width=8.5}
+```{r Supp Fig 14, fig.height=6, fig.width=8.5}
 
 email.data <- make.meta.table(results.email, F, b=0.25, ymax = 1.3,title = "Has Email?")
 email.data
@@ -4056,7 +4067,7 @@ answered.mhq.data[[1]][ variant.type == "META",paste0(Sex, " MHQ OR=",sprintf("%
 
 #### Figure 15.
 
-```{r fig.height=5, fig.width=8}
+```{r Supp Fig 15, fig.height=5, fig.width=8}
 
 ## Grab relevant columns from phenotype data
 birth.stats <- UKBB.phenotype.data[,c("eid","children.fathered","live.births","sexPulse","agePulse")]
@@ -4116,7 +4127,7 @@ This table was manually created. Not necessary to automate the process.
 
 Tabulate ORs and Effect Sizes estimated in this manuscript:
 
-```{r}
+```{r Supp Table 3}
 
 format.table <- function(t, var, is.OR, rel.fig) {
   
@@ -4216,7 +4227,7 @@ supptable3b[,formated:=paste0("OR=",sprintf("%0.2f",`Effect (OR/Beta)`), " [95% 
 
 #### Table 4
 
-```{r}
+```{r Supp Table 4}
 
 supptable4 <- merge(cog.raw[,c("newiq","Obs","Mean","SD","pred.log")],childless.raw[,c("iq","inc.childlessness","std. err.","pred.log.inv")],by.x="newiq",by.y="iq")
 supptable4[,sd_childlessness:=`std. err.`*sqrt(Obs)]
@@ -4231,7 +4242,7 @@ write.table(supptable4,"figures/supplement/SuppTable4.tsv",col.names=T,row.names
 
 #### Table 5
 
-```{r}
+```{r Supp table 5}
 
 supptable5 <- modeling[,c("or","or.upper","n.indv","sex.ratio","ratio","trait","sex","mean.children","incidence","or.lower")]
 setnames(supptable5,names(supptable5),c("OR.ganna","OR.upper.ganna","N.power","sex.ratio.power","fertility.ratio.power","trait","sex","mean.children.power","incidence.power","OR.lower.ganna"))
@@ -4406,11 +4417,3 @@ paste0("")
 paste0("high pLI genes (≥ 0.9) have a mean sHET value of : ",sprintf("%0.3f",mean.highpLI))
 paste0("")
 ```
-
-
-```
-
-
-
-
-
