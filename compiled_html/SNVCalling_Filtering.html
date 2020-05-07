@@ -405,13 +405,14 @@ summary {
 <li>bgzip and tabix, which is provided as part of <a href="https://github.com/samtools/htslib">htslib</a>.</li>
 <li>bedtools, which is used for various genome arithmatic functions</li>
 </ol>
-<p><em>Note</em>: The intent of this document is <em>not</em> to be a runnable document like <code>PhenotypeTesting.Rmd</code>, it is instead to offer a guide on how SNV/InDel annotation and curation was performed. We have provided the output of this document to UK Biobank, which you can download at:</p>
-<p><code>https://fake.ukbbioank_url.com</code></p>
+<p><strong>Note</strong>: The intent of this document is <em>not</em> to be a runnable document like <code>PhenotypeTesting.Rmd</code>, it is instead to offer a guide on how SNV/InDel annotation and curation was performed. We have provided the output of this document to UK Biobank, which you can download at:</p>
+<p><code>https://fake.ukbbiobank_url.com</code></p>
+<p>You can view a compiled html version of this document with all code run either within this repository at <code>compiled_htmls/SNVCalling_Filtering.html</code> or on <a href="https://htmlpreview.github.io/?https://github.com/eugenegardner/UKBBFertility/blob/master/compiled_html/SNVCalling_Filtering.html">github</a>.</p>
 </div>
 <div id="required-exome-variant-files" class="section level1">
 <h1>2. Required Exome Variant Files</h1>
 <p>First step to analyse UK Biobank WES data is to actually acquire the variant files themselves. Please see <a href="http://biobank.ndph.ox.ac.uk/showcase/field.cgi?id=23160">this page</a> for additional information on accquiring required files. Please note that conversion to VCF format requires <a href="https://www.cog-genomics.org/plink2">PLINKv1.9 or PLINKv2</a> and <a href="http://www.htslib.org/doc/tabix.html">tabix</a>.</p>
-<p><em>Note:</em> DO NOTE delete the raw files after you download them. VEP annotation requires them to work properly!</p>
+<p><strong>Note</strong>: DO NOT delete the raw files after you download them. VEP annotation requires them to work properly!</p>
 <p>Roughly, files were accquired and processed into a VCF format file with the following commands:</p>
 <pre class="bash"><code>
 ## Going to put these files in vcfs/ to make examples in this document consistent:
@@ -419,7 +420,7 @@ mkdir vcfs/
 cd vcfs/
 
 ## This downloads a set of plink binary format files: ukb_efe_chr1_v1.bed, ukb44165_efe_chr1_v1_s49959.fam, ukb_fe_exm_chrall_v1.bim
-## Note that you must have your keyfile provided by UKB in the same directory/pointed to with the -a flag
+## Note that you must also have your keyfile provided by UKB pointed to with the -a flag
 ukbgene efe -c1 ## bed file
 ukbgene efe -c1 -m ## fam file
 curl -O biobank.ndph.ox.ac.uk/showcase/showcase/auxdata/ukb_fe_exm_chrall_v1.bim ## bim file
@@ -434,7 +435,7 @@ tabix -p vcf ukbb_plink.vcf.gz</code></pre>
 <div id="generating-annotation-sources" class="section level1">
 <h1>3. Generating Annotation Sources</h1>
 <p>This process is slightly complicated because I have written this code to be project-agnostic and therefore makes the possible sources of data that I am accounting for more complicated. I have provided here a simplified version of this annotation for Hg38 UK Biobank data, but this code should be fairly adaptable to other sequencing formats.</p>
-<p><em>Note:</em> All annotations below are done <em>without</em> the “chr” prefix!</p>
+<p><strong>Note</strong>: All annotations below are done <em>without</em> the “chr” prefix!</p>
 <p>Basic Steps:</p>
 <ol style="list-style-type: decimal">
 <li>Variant Agnostic Databases – For each of the below annotations I need to generate GRCh38 versions. Annotations are stored in the root folder <code>annotations/hg38/</code> with the corresponding directory name in brackets below: *CADD scores [<code>cadd/</code>] + We also have to generate CADD scores for variants not included in the default build. + I believe this is completely limited to InDels.
@@ -463,7 +464,7 @@ tabix -p vcf ukbb_plink.vcf.gz</code></pre>
 </ul></li>
 </ol>
 <p>All of the basic annotation is being done in root directory. As noted above, per-vcf annotations are located in <code>./vcfs/</code>. The actual “mashing together” of annotations will be performed by a <a href="#3.-running-the-variant-engine">java pipeline</a>.</p>
-<p><em>Note</em>: <em>Many</em> of the below commands will take a long time, either due to long download times or to actual processing time. It is highly recommended to run these with some sort of parallel compute architecture. Nonetheless, all of these commands should be runnable on a local machine.</p>
+<p><strong>Note</strong>: <em>Many</em> of the below commands will take a long time, either due to long download times or to actual processing time. It is highly recommended to run these with some sort of parallel compute architecture. Nonetheless, all of these commands should be runnable on a local machine.</p>
 <div id="a.-create-required-directory-structure" class="section level2">
 <h2>3A. Create Required Directory Structure</h2>
 <pre class="bash"><code>
@@ -648,7 +649,7 @@ tabix -s 1 -b 2 -e 2 cadd.tsv.gz</code></pre>
 cd ensembl-vep/
 git checkout release/97</code></pre>
 <p>New-ish builds should be OK, but have not been tested. VEP has to be run differently for each genome build (due to differences b/w the VEP cache/LOFTEE for each genome build). This is mostly handled by the provided script <code>scripts/make_chr_sites.pl</code>.</p>
-<p><em>BIG Note</em>: This paths within this script MUST be edited to fit any local VEP build.</p>
+<p><strong>Big Note</strong>: This paths within this script MUST be edited to fit any local VEP build.</p>
 <p>I run VEP annotation in 322 chunks (dictated by bedtools makewindows), but the important part is the actual command run by <code>make_chr_sites.pl</code> to ensure formating is consistent with the downstream code.</p>
 <p>This script requires:</p>
 <ol style="list-style-type: decimal">
@@ -656,7 +657,7 @@ git checkout release/97</code></pre>
 <li>bcftools &amp; the bcftools plugin split-vep</li>
 <li>plink</li>
 </ol>
-<p>A <em>note</em> on LOFTEE:</p>
+<p>A <strong>Note</strong> on LOFTEE:</p>
 <p>The most complicated part of getting VEP to work was building loftee for GRCh38. Ensure you have a plugins dir for VEP as described <a href="https://www.ensembl.org/info/docs/tools/vep/script/vep_plugins.html">here</a>. Some tips when doing this:</p>
 <ol style="list-style-type: decimal">
 <li>Pull the grch38 version of Konrad’s <a href="https://github.com/konradjk/loftee">git repo</a>:</li>
@@ -699,17 +700,22 @@ tabix -s 1 -b 2 -e 2 vep.tsv.gz</code></pre>
 <p>This code block is almost <em>identical</em> to the one that is the “Curating Genelists” section in the <code>PhenotypeTesting.Rmd</code> document. The only exception is that we create a ‘coordinates.txt’ file for both hg19 (not used for Hg38) and hg38 that is used as the primary genelist input for our annotation engine.</p>
 <p>Reiterating what gene lists that we use here:</p>
 <ol style="list-style-type: decimal">
+<li>ENSEMBL-downloaded resources from <a href="https://www.ensembl.org/biomart/martview/0511514c231557b5d24ace4e8f7862e0">BioMart</a>.</li>
 <li>pLI information from the <a href="https://storage.googleapis.com/gnomad-public/release/2.1.1/constraint/gnomad.v2.1.1.lof_metrics.by_gene.txt.bgz">gnomAD project</a>.</li>
 <li>s<sub>het</sub> from <a href="https://doi.org/10.1093/molbev/msz092">Weghorn et al</a>. The reference file is included in this repository (<code>raw_data/genelist/shet.weghorn.txt</code>).</li>
-<li>ENSEMBL-downloaded resources from <a href="https://www.ensembl.org/biomart/martview/0511514c231557b5d24ace4e8f7862e0">BioMart</a>.</li>
 </ol>
-<p><em>Note</em>: These scripts assume you have <code>curl</code> installed on your system, which <em>should</em> be true if you are using macos and most *nix systems. Please change the scripts below if this is not the case.</p>
+<p><strong>Note</strong>: These scripts assume you have <code>curl</code> installed on your system, which <em>should</em> be true if you are using macos and most *nix systems. Please change the scripts below if this is not the case.</p>
 <div id="download-resources-from-biomart" class="section level3">
 <h3>Download Resources from BioMart</h3>
-<pre class="r"><code>## First and only place code is generated
-library(biomaRt)
-library(data.table)
-library(stringr)
+<pre class="r"><code>## Load packages silently
+load.package &lt;- function(name) {
+  suppressMessages(suppressWarnings(library(name, quietly = T, warn.conflicts = F, character.only = T)))
+}
+
+## First and only place code is generated
+load.package(&quot;biomaRt&quot;)
+load.package(&quot;data.table&quot;)
+load.package(&quot;tidyverse&quot;)
 
 ## Hg19
 ensembl &lt;- useMart(&quot;ensembl&quot;, host=&quot;http://grch37.ensembl.org&quot;, dataset = &quot;hsapiens_gene_ensembl&quot;)
@@ -764,8 +770,8 @@ mv rawdata/genelists/hg19.coordinates.2.txt rawdata/genelists/hg19.coordinates.t
 ##                                  Dload  Upload   Total   Spent    Left  Speed
 ## 
   0     0    0     0    0     0      0      0 --:--:-- --:--:-- --:--:--     0
-  0 4501k    0 27099    0     0  75976      0  0:01:00 --:--:--  0:01:00 75907
-100 4501k  100 4501k    0     0  5158k      0 --:--:-- --:--:-- --:--:-- 5156k</code></pre>
+  0 4501k    0     0    0     0      0      0 --:--:-- --:--:-- --:--:--     0
+100 4501k  100 4501k    0     0  3552k      0  0:00:01  0:00:01 --:--:-- 3552k</code></pre>
 </div>
 <div id="hg38-gene-lists" class="section level3">
 <h3>Hg38 Gene Lists</h3>

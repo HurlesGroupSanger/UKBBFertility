@@ -8,7 +8,7 @@ output:
     toc_depth: 2
 ---
 
-# Startup and Introduction
+# 1. Startup and Introduction
 
 This notebook handles calling, annotation, and building filtering model(s) of CNV calls.
 
@@ -17,13 +17,13 @@ This proceeds in the following order:
 1. Array CNVs are called in batches of ~5K samples.
 2. Whole Exome CNVs (for INTERVAL only) are called using XHMM, CoNVex, and CLAMMS
 3. Raw CNVs are cat'd from each of the Array CNV calling batches into a final (raw) file and covariate values for each CNV are calculated and CNVs are merged into the final file using the "CNVPolisher":
-** Attachment of Individual level data to each CNV and intersect with WES CNV calls from XHMM, CANOES, and CLAMMS. Sites/Individuals **are not** filtered except for light filtering based on:
-*** PASS status for the actual array based on affymetrix standards (so on individual level)
-*** Duplicated array (keep highest quality score array per individual)
+    + Attachment of Individual level data to each CNV and intersect with WES CNV calls from XHMM, CANOES, and CLAMMS. Sites/Individuals **are not** filtered except for light filtering based on:
+        + PASS status for the actual array based on affymetrix standards (so on individual level)
+        +Duplicated array (keep highest quality score array per individual)
 4. Filter CNVs according to a Random Forest model
 5. Merging of DEL/DUP calls independently using at first `bedtools merge` (to capture all possible overlaps) and then 75% reciprocal overlap.
-** Printing of a VCF file containing "genotyped" calls for each individual at every site
-6. Annotation with VEP and generation of final files for input into PhenotypeTesting.Rmd
+        + Printing of a VCF file containing "genotyped" calls for each individual at every site
+6. Annotation with VEP and generation of final files for input into `PhenotypeTesting.Rmd`
 
 The intent of this file is _NOT_ to perfectly regenerate the files that are provided as part of our UK Biobank, it is merely intended to document the code that we used to perform the QC itself. This document also does some comparisons on CNV QC that were not shown in our manuscript.
 
@@ -35,17 +35,24 @@ You can view a compiled html version of this document with all code run either w
 
 knitr::opts_chunk$set(
 	echo = TRUE,
-	message = FALSE
-	)
+	message = FALSE,
+	warning = FALSE
+)
 
-library(data.table) ## Better than data.frame
-library(tidyverse) ## provides DPLYR/ggplot2
-library(patchwork) ## Makes combining plots easily
-library(randomForest) ## randomForest implementation
-library(ROCR) ## Builds ROC curves
-library(cvAUC) ## Determines CI for AUC from ROCR
-library(gdata) ## Allows for accurate random sampling when making training sets
-library(biomaRt) ## For getting gene lists/data
+## Silently load packages
+load.package <- function(name) {
+  suppressMessages(suppressWarnings(library(name, quietly = T, warn.conflicts = F, character.only = T)))
+}
+
+load.package("data.table") ## Better than data.frame
+load.package("tidyverse") ## provides DPLYR/ggplot2
+load.package("patchwork") ## Makes combining plots easily
+load.package("randomForest") ## randomForest implementation
+load.package("ROCR") ## Builds ROC curves
+load.package("cvAUC") ## Determines CI for AUC from ROCR
+load.package("gdata") ## Allows for accurate random sampling when making training sets
+load.package("biomaRt") ## For getting gene lists/data
+load.package("readxl") ## For reach male infertility genes
 
 theme <- theme(panel.background=element_rect(fill="white"),line=element_line(size=1,colour="black",lineend="round"),axis.line=element_line(size=1),text=element_text(size=10,face="bold",colour="black"),axis.text=element_text(colour="black"),axis.ticks=element_line(size=1,colour="black"),axis.ticks.length=unit(.1,"cm"),strip.background=element_rect(fill="white"),axis.text.x=element_text(angle=45,hjust=1),legend.position="blank",panel.grid.major=element_line(colour="grey",size=0.5))
 
@@ -86,7 +93,7 @@ dup.line <- "#0000FF"
 dup.fill <- "#AEC6CF"
 ```
 
-# 1. Generation of Array-based CNV Calls
+# 2. Generation of Array-based CNV Calls
 
 In this section are example command lines to generate PennCNV CNV calls. They *are not* intended to be specifically reproducible on a separate system and will have to be modified to any particular system where PennCNV is run.
 
@@ -98,7 +105,7 @@ Required Files:
         + These are specific to the UKBiobank and INTERVAL arrays, and should not be used for other arrays (including BiLEVE)
     + All SNVs `mapfileAX.dat`
     + PennCNV specific Axiom HMM: `Axiom_trained.hmm`
-* Raw array .CEL files (downloaded from INTERVAl or UKB; need to apply for separate access, see [this document](http://biobank.ndph.ox.ac.uk/showcase/showcase/docs/ukbfetch_instruct.html) on how to download)
+* Raw array .CEL files (downloaded from INTERVAL or UKB; need to apply for separate access, see [this document](http://biobank.ndph.ox.ac.uk/showcase/showcase/docs/ukbfetch_instruct.html) on how to download UK Biobank data)
 * [PennCNV Scripts](http://penncnv.openbioinformatics.org/en/latest/)
 
 All of the input CNVs from array-based calls are generated by PennCNV using the following pipeline:
@@ -151,7 +158,7 @@ bgzip split1.a550484.bed
 tabix -p bed split1.a550484.bed.gz
 ```
 
-# 2. WES CNV Calling:
+# 3. WES CNV Calling:
 
 CNVs were then called from WES using:
 
@@ -167,7 +174,7 @@ For each caller, final calls are converted to a single concatenated file with th
 2. start
 3. end
 4. Number of affected WES probes
-5. <intentionally blank>
+5. Intentionally left blank
 6. Copy type (either DEL or DUP)
 7. sample ID
 
@@ -175,7 +182,7 @@ This file must then be sorted, zipped, and indexed with `bgzip` and `tabix`. An 
 
 **Note**: WES ID *MUST* be consistent between all of the files, or else the subsequent processing pipeline will not work properly. It does not matter what this ID is, other than containing only alphanumeric characters or underscores.
 
-# 3. Covariate Annotation:
+# 4. Covariate Annotation:
 
 This section attaches sample level information via a custom java pipeline (included in this repo at `src/CNVQC/` and as a compiled jar -- **runnable with java14** -- at `scripts/CNVAnnotator.jar`). There are two possible ways to annotate CNVs, one with exome data (INTERVAL) and one without (UKBB). To run CNVs without WES, simply omit the canoes/clamms/xhmm files. The file provided to -samples looks like:
 
@@ -190,7 +197,7 @@ Where each column tab-delimited and is:
 3. The sample ID to link to WES data as described above. This _must_ be the same ID as WES call files. Can be set to 'null' if no WES data available.
 4. Sample gender in ALL CAPS
 5. Quality score from the affymetrix raw data (can be 'NaN' if unknown)
-6. eid of the participant from your UKBB fam file
+6. 7 digit eid of the participant from your UKBB fam file
 
 The files provided to -axiom and -wes are a tab delimited bed file of axiom and WES probes, respectively. For WES probes, I have merged adjacent probes within 500bp of each other to represent 'exons'. Example files are available at `rawdata/cnvexamples/axiom_baits.example.bed.gz` and `rawdata/cnvexamples/exome_baits.example.bed.gz`.
 
@@ -230,11 +237,11 @@ grep '#' merging/raw_files/batchAll.1.annotated.txt > merging/header.txt
 grep -h -v "#" merging/raw_files/batchAll.*.annotated.txt | cat merging/header.txt - > merging/batchAll.annotated.txt
 ```
 
-# 4. Filtering CNVs
+# 5. Filtering CNVs
 
 The above java code for `Annotate` performs **no** filtering based on any model. I am using pre-merge information using the code below to build a Random Forest model to do QC using only variants found in individuals with WES data. This model can then be applied to variants across any dataset to filter variants that do not "look" (based on various covariates) like a CNV that should have WES evidence.
 
-## 4A. Load Annotated INTERVAL CNV calls
+## 5A. Load Annotated INTERVAL CNV calls
 
 Calls added here are for all individuals in INTERVAL. An additional column (has.wes) indicates if the file does have WES data. Only these individuals are used to train our model. An example head of a complete batchAll.annotated.txt can be found at `rawdata/cnvexamples/example.annotated.txt`
 
@@ -273,7 +280,7 @@ annotated.cnvs[,dummy:=1]
 paste("Total number of CNVs loaded:", nrow(annotated.cnvs))
 ```
 
-## 4B. Load Annotated UKBB CNV calls
+## 5B. Load Annotated UKBB CNV calls
 
 ```{r Load merged UKBB CNV calls}
 
@@ -296,10 +303,6 @@ This code creates a metric for each probe to see how often it is deleted in good
 LRR ≥ 0.35 & CNVs ≥ 30 & abs(WF) ≥ 0.03
 
 and 'good' arrays as the 75%tile of CNVs that are less than the above terms.
-
-```{bash Make Dirs}
-mkdir rawdata/cnvexamples/probe_badness/
-```
 
 ```{r defining cutoffs}
 
@@ -335,8 +338,8 @@ source ~/.bash_profile
 bedtools intersect -c -a rawdata/cnvexamples/axiom_probes.bed.gz -b rawdata/cnvexamples/probe_badness/best_arrays.del.bed > rawdata/cnvexamples/probe_badness/best_arrays.overlap.del.bed
 bedtools intersect -c -a rawdata/cnvexamples/axiom_probes.bed.gz -b rawdata/cnvexamples/probe_badness/bad_arrays.del.bed > rawdata/cnvexamples/probe_badness/bad_arrays.overlap.del.bed
 
-bedtools intersect -c -a rawdata/cnvexamples/probe_badness/axiom_probes.bed.gz -b rawdata/cnvexamples/probe_badness/best_arrays.dup.bed > rawdata/cnvexamples/probe_badness/best_arrays.overlap.dup.bed
-bedtools intersect -c -a rawdata/cnvexamples/probe_badness/axiom_probes.bed.gz -b rawdata/cnvexamples/probe_badness/bad_arrays.dup.bed > rawdata/cnvexamples/probe_badness/bad_arrays.overlap.dup.bed
+bedtools intersect -c -a rawdata/cnvexamples/axiom_probes.bed.gz -b rawdata/cnvexamples/probe_badness/best_arrays.dup.bed > rawdata/cnvexamples/probe_badness/best_arrays.overlap.dup.bed
+bedtools intersect -c -a rawdata/cnvexamples/axiom_probes.bed.gz -b rawdata/cnvexamples/probe_badness/bad_arrays.dup.bed > rawdata/cnvexamples/probe_badness/bad_arrays.overlap.dup.bed
 
 paste rawdata/cnvexamples/probe_badness/best_arrays.overlap.del.bed rawdata/cnvexamples/probe_badness/bad_arrays.overlap.del.bed  | perl -ane 'chomp $_; my $ratio = log(($F[3] + 1) / ($F[7] + 1)); print "$F[0]\t$F[1]\t$F[2]\t$ratio\n";' > rawdata/cnvexamples/probe_badness/del_badness_mask.bed
 paste rawdata/cnvexamples/probe_badness/best_arrays.overlap.dup.bed rawdata/cnvexamples/probe_badness/bad_arrays.overlap.dup.bed  | perl -ane 'chomp $_; my $ratio = log(($F[3] + 1) / ($F[7] + 1)); print "$F[0]\t$F[1]\t$F[2]\t$ratio\n";' > rawdata/cnvexamples/probe_badness/dup_badness_mask.bed
@@ -372,16 +375,13 @@ bad.arrays.UKBB.bed[,badness.score:=as.double(badness.score)]
 ukbb.annotated.cnvs <- merge(ukbb.annotated.cnvs,bad.arrays.UKBB.bed,by=c("chr","start","end","split.file","ct"),all=F)
 ```
 
-## 4C. Filtering based on already published methods
+## 5C. Filtering based on already published methods
 
 ### Filtering based on Macé et. al.
 
-This code filters on a step-wise logistic regression using data provided by [Macé et. al.](https://academic.oup.com/bioinformatics/article/32/21/3298/2415363). Covariates and methods below are stripped from the R package that they developed, and is availible online at [PennCNV Pipeline - this is a direct link to the tarball download](http://goo.gl/T6yuFM). This pipeline was found in [Fang. et. al.](https://link.springer.com/protocol/10.1007/978-1-4939-8666-8_1), which is a descriptor on how to do PennCNV-based array calls.
+This code filters on a step-wise logistic regression using data provided by [Macé et. al.](https://academic.oup.com/bioinformatics/article/32/21/3298/2415363). Covariates and methods below are stripped from the R package that they developed, and is available online at [PennCNV Pipeline](http://goo.gl/T6yuFM) - this is a direct link to the tarball download. This pipeline was found in [Fang. et. al.](https://link.springer.com/protocol/10.1007/978-1-4939-8666-8_1), which is a descriptor on how to do PennCNV-based array calls.
 
 ```{r CNV Filtering in Macé, fig.height=4, fig.width=12}
-
-## This is here to just reset if this chunk has already been run:
-annotated.cnvs[,QS.mace:=NULL]
 
 ## Coefficients are from R_script_calculate_quality_score.R in the Penn CNV pipeline
 build.coefficients<-function(copy.type) {
@@ -433,8 +433,8 @@ annotated.cnvs<-merge(annotated.cnvs,QS.table,by=c("split.file","location","ct")
 
 thresh<-0.8 ## Set Threshold for filtering CNVs
 totals<-merge(annotated.cnvs[abs(QS.mace)>=thresh,sum(dummy),by=c("ct")],annotated.cnvs[,sum(dummy),by=c("ct")],by="ct")
-totals[,pos.x:=c(-0.6,0.6)]
-totals[,pos.y:=c(2500,2500)]
+totals[,pos.x:=if_else(ct == "DEL",-0.6,0.6)]
+totals[,pos.y:=2500]
 totals[,pct:=(V1.x/V1.y)*100]
 
 ggplot(annotated.cnvs,aes(QS.mace,fill=ct,colour=ct)) + scale_fill_manual(values=c(del.fill,dup.fill)) + scale_colour_manual(values=c(del.line,dup.line)) + geom_histogram(binwidth = 0.01) + geom_vline(aes(xintercept=0.8),colour=dup.line,size=1.5) + geom_vline(aes(xintercept=-0.8),colour=del.line,size=1.5) + geom_text(inherit.aes=F,data=totals,aes(x=pos.x,y=pos.y,label=paste("Total Pass ",ct,":\n",V1.x,"\n(",sprintf("%.1f",pct),"%)",sep="")),size=5) + xlab("Macé-QS") + ylab("Total CNV sites per bin") + theme
@@ -454,8 +454,8 @@ ukbb.annotated.cnvs<-merge(ukbb.annotated.cnvs,QS.table,by=c("split.file","locat
 
 thresh<-0.8 ## Set Threshold for filtering CNVs
 totals<-merge(ukbb.annotated.cnvs[abs(QS.mace)>=thresh,sum(dummy),by=c("ct")],ukbb.annotated.cnvs[,sum(dummy),by=c("ct")],by="ct")
-totals[,pos.x:=c(-0.6,0.6)]
-totals[,pos.y:=c(40000,40000)]
+totals[,pos.x:=if_else(ct == "DEL",-0.6,0.6)]
+totals[,pos.y:=25000]
 totals[,pct:=(V1.x/V1.y)*100]
 
 ggplot(ukbb.annotated.cnvs,aes(QS.mace,fill=ct,colour=ct)) + scale_fill_manual(values=c(del.fill,dup.fill)) + scale_colour_manual(values=c(del.line,dup.line)) + geom_histogram(binwidth = 0.01) + geom_vline(aes(xintercept=0.8),colour=dup.line,size=1.5) + geom_vline(aes(xintercept=-0.8),colour=del.line,size=1.5) + geom_text(inherit.aes=F,data=totals,aes(x=pos.x,y=pos.y,label=paste("Total Pass ",ct,":\n",V1.x,"\n(",sprintf("%.1f",pct),"%)",sep="")),size=5) + xlab("Macé-QS") + ylab("Total CNV sites per bin") + theme
@@ -475,41 +475,41 @@ I have also added George Kirov's default filters (taken from [this](https://jmg.
 
 ## TRUE means true call, false means FALSE call
 ## Filter B
-print("Filter B:")
 annotated.cnvs[,filter.b:=(LRR_SD < 0.3 & BAF_drift < 0.01 & abs(WF) < 0.05 & NumCNV < 100)]
 ukbb.annotated.cnvs[,filter.b:=(LRR_SD < 0.3 & BAF_drift < 0.01 & abs(WF) < 0.05 & NumCNV < 100)]
+print("Filter B:")
 table(annotated.cnvs[,filter.b])
 
 ## Filter C
-print("Filter C:")
 annotated.cnvs[,filter.c:=(LRR_SD < 0.24 & abs(WF) < 0.05 & callrate > 0.99 & No_Probes >= 10)]
 ukbb.annotated.cnvs[,filter.c:=(LRR_SD < 0.24 & abs(WF) < 0.05 & callrate > 0.99 & No_Probes >= 10)]
+print("Filter C:")
 table(annotated.cnvs[,filter.c])
 
 ## Filter D
-print("Filter D:")
 annotated.cnvs[,filter.d:=(LRR_SD < 0.3 & abs(WF) < 0.05 & NumCNV < 100 & callrate > 0.98)]
 ukbb.annotated.cnvs[,filter.d:=(LRR_SD < 0.3 & abs(WF) < 0.05 & NumCNV < 100 & callrate > 0.98)]
+print("Filter D:")
 table(annotated.cnvs[,filter.d])
 
 ## Filter E
-print("Filter E:")
 annotated.cnvs[,filter.e:=(LRR_SD <= 0.27 & BAF_SD <= 0.13 & callrate >= 0.98 & No_Probes >= 5 & Length_bp >= 1000)]
 ukbb.annotated.cnvs[,filter.e:=(LRR_SD <= 0.27 & BAF_SD <= 0.13 & callrate >= 0.98 & No_Probes >= 5 & Length_bp >= 1000)]
+print("Filter E:")
 table(annotated.cnvs[,filter.e])
 
 ## Filter GK
-print("George Kirov default filter:")
 annotated.cnvs[,filter.gk:=(LRR_SD <= 0.35 & abs(WF) <= 0.03 & NumCNV <= 30 & callrate >= 0.96 & No_Probes >= 10 & density <= 20000)]
 ukbb.annotated.cnvs[,filter.gk:=(LRR_SD <= 0.35 & abs(WF) <= 0.03 & NumCNV <= 30 & callrate >= 0.96 & No_Probes >= 10 & density <= 20000)]
+print("George Kirov default filter:")
 table(annotated.cnvs[,filter.gk])
 
 ## Macé suggested filters
-print("Macé suggested filters")
 annotated.cnvs[,filter.mace.8:=abs(QS.mace) > 0.8]
 annotated.cnvs[,filter.mace.5:=abs(QS.mace) > 0.5]
 ukbb.annotated.cnvs[,filter.mace.8:=abs(QS.mace) > 0.8]
 ukbb.annotated.cnvs[,filter.mace.5:=abs(QS.mace) > 0.5]
+print("Macé suggested filters")
 table(annotated.cnvs[,filter.mace.8])
 table(annotated.cnvs[,filter.mace.5])
 
@@ -519,7 +519,7 @@ ukbb.annotated.cnvs[,filter.null:=TRUE]
 
 ```
 
-## 4D. Novel Random Forest Model
+## 5D. Novel Random Forest Model
 
 Going to use the R module 'randomForest' to develop an ML model for declaring if a CNV "looks like" a WES CNV. 
 
@@ -566,6 +566,7 @@ This code makes extensive use of the package ROCR combined with cross-validating
 **Note**: cvAUC simply calls ROCR to generate ROC curves, which I extract to make my own plots). I extract the X & Y variables from the ROCR performance objects generated by cvAUC, but underneath the hood it is all ROCR. I did generate a function (get.avg) which uses the "avg" function in .plot.performance which is supplied by ROCR. Good tutorial for basic ROCR package use is [here](https://www.r-bloggers.com/a-small-introduction-to-the-rocr-package/).
 
 ```{r leave one out, fig.height=7, fig.width=10, warning=FALSE}
+
 ## This function just runs the various models through RandomForest and Logistic Regression
 run.models <- function(test,training) {
   
@@ -791,7 +792,7 @@ plot.data <- function(data.curve,data.point,col.to.use) {
     scale_x_reverse(name="Specificity",lim=c(1,-0.1),breaks=c(1,.75,.5,.25,0)) +
     scale_y_continuous(name="Sensitivity",lim=c(0,1)) +
     geom_abline(intercept = 1) +
-    theme
+    theme.legend
 
   return(plot)
 }
@@ -800,11 +801,10 @@ for (a in list(DEL.plot,DUP.plot)) {
 
   i.curve <- a[[1]]
   i.point <- a[[2]]
-  print(a[[3]])
   colour <- a[[4]]
   
   ## Plot RF basic & overlap models
-  print(plot.data(i.curve[model=="RandomForest" | model=="Macé"][training.type=="basic" | is.na(AUC)],i.point,colour))
+  print(plot.data(i.curve[model=="RandomForest"][training.type=="basic" | training.type == "random.initial" | is.na(AUC)],i.point,colour))
   
 }
 rm(a)
@@ -855,9 +855,6 @@ print(Forest_deletion)
 print(Forest_duplication)
 
 ## Plots covariate weights:
-varImpPlot(Forest_deletion)
-varImpPlot(Forest_duplication)
-
 del.imp<-data.table(Forest_deletion$importance)
 del.imp[,covar:=rownames(Forest_deletion$importance)]
 del.imp.sd <- data.table(Forest_deletion$importanceSD)
@@ -888,10 +885,10 @@ setkey(importance,"%IncMSE")
 importance[,covar:=factor(covar,levels=importance[`Copy Type`=="IncMSE.final.del",covar])]
 
 ## Actual Plots - Sorted by importance for Deletions.
-ggplot(importance,aes(covar,`%IncMSE`,group=`Copy Type`,colour=`Copy Type`)) + geom_point(position=position_dodge(width=1),size=3) + scale_colour_manual(values = c(del.line,dup.line)) + scale_x_discrete(labels=c("Num CNVs","BAF Mean","BAF SD","BAF Drift","LRR Mean", "site - BAF SD","site - LRR SD","LRR SD","WF","site - BAF Mean","CNV Length","No. Probes","Probe Density","Probe Error","site - LRR Mean"),name="") + coord_flip() + theme
+ggplot(importance,aes(covar,`%IncMSE`,group=`Copy Type`,colour=`Copy Type`)) + geom_point(position=position_dodge(width=1),size=3) + scale_colour_manual(values = c(del.line,dup.line)) + scale_x_discrete(labels=c("Num CNVs","BAF Mean","BAF SD","BAF Drift","LRR Mean", "site - BAF SD","site - LRR SD","LRR SD","WF","site - BAF Mean","CNV Length","No. Probes","Probe Density","Probe Error","site - LRR Mean"),name="") + coord_flip() + theme.legend
 ```
 
-## 4E. Cutoff application and final file creation
+## 5E. Cutoff application and final file creation
 
 ### Hard Cutoff
 
@@ -1030,8 +1027,7 @@ calculate.cutoff <- function(cutoff, data) {
     
     ## Just print the table so it is included as a part of the Markdown
     print(calcd.cutoffs)
-    print(calcd.cutoffs.os)
-  
+
     ## Final Sensitivity v Specificity
     print(ggplot() + geom_text(data=calcd.cutoffs,aes(spec,sens,colour=ct,label=metric),size=6) + geom_text(data=calcd.cutoffs.os,aes(spec.mean,sens.mean,colour=ct,label=training.type),size=6) +            scale_colour_manual(values=c(del.line,dup.line)) + scale_x_reverse(lim=c(1,0),name="Specificity") + scale_y_continuous(lim=c(0,1),name="Sensitivity") + theme)
     
@@ -1043,7 +1039,7 @@ cutoff.ukbb <- calculate.cutoff(0.95, ukbb.annotated.cnvs)
 
 ```
 
-## 4F. Print and Save Final QCd UKBB CNVs 
+## 5F. Print and Save Final QCd UKBB CNVs 
 
 This prints my final file with QC metrics from my basic model. **Note**: This file has ALL sites included — it *does not* remove any sites and should be filtered by any subsequent pipeline.
 
@@ -1056,7 +1052,7 @@ final.names <- c(original.names[1:38],"badness.score",names(annotated.cnvs)[grep
 write.table(ukbb.annotated.cnvs[,..final.names],"rawdata/cnvexamples/ukbb.qcd.txt",sep="\t",col.names = F, row.names = F, quote = F)
 ```
 
-# 5. Merging of DEL/DUP calls
+# 6. Merging of DEL/DUP calls
 
 Final file is provided as input to java code included as part of this project. This is the same code/jar as used for "Covariate Annotation" in section 3, except with a different subcommand -- `Merge`. Just reiterating, but sourcecode is in the directory `src/CNVPolisher/`, the jar is at `scripts/CNVAnnotator.jar`. This code:
 
@@ -1084,11 +1080,11 @@ java -Xmx20G -Xms20G -jar scripts/CNVAnnotator.jar Merge /
   -samples samples_file.txt
 ```
 
-# 6. VEP Annotation
+# 7. VEP Annotation
 
 This section annotates every locus in `ukbb.qcd.txt`. The final output file, `cnv_vep_parsed.sorted.bed` has a single line per unique DEL/DUP interval (basedo n the 75% reciprocal overlap from above) with gene level-information.
 
-## 6A. Generate Gene Lists
+## 7A. Generate Gene Lists
 
 This code block is almost _identical_ to the one that is the "Curating Genelists" section in the `PhenotypeTesting.Rmd` document. You can use the files generated here for that project, and vice versa.
 
@@ -1096,7 +1092,7 @@ Reiterating what gene lists that we use here:
 
 1. ENSEMBL-downloaded resources from [BioMart](https://www.ensembl.org/biomart/martview/0511514c231557b5d24ace4e8f7862e0).
 2. pLI information from the [gnomAD project](https://storage.googleapis.com/gnomad-public/release/2.1.1/constraint/gnomad.v2.1.1.lof_metrics.by_gene.txt.bgz).
-3. s~het~ from [Weghorn et al.](https://doi.org/10.1093/molbev/msz092). The reference file is included in this repository (`raw_data/genelist/shet.weghorn.txt`).
+3. s~het~ from [Weghorn et al](https://doi.org/10.1093/molbev/msz092). The reference file is included in this repository (`raw_data/genelist/shet.weghorn.txt`).
 4. Disease genes from ClinVar, DDG2P, and OMIM (see that section for links).
 5. Male Infertility Genes from [this paper](https://academic.oup.com/humrep/article/34/5/932/5377831).
 
@@ -1190,7 +1186,7 @@ scripts/matcher.pl -file1 rawdata/genelists/hg19.genes.txt -file2 rawdata/geneli
 
 ```
 
-## 6B. Annotate With VEP
+## 7B. Annotate With VEP
 
 This analysis proceeds in three basic steps:
 
@@ -1198,11 +1194,11 @@ This analysis proceeds in three basic steps:
 2. Run VEP on all of those loci (`scripts/annotate_vep.pl`)
     + **Note**: You need to make sure you edit this script to set appropriate paths to your own file system!
 3. Generate a tab delimited file that can be used when running `PhenotypeTesting.Rmd` (`scripts/attach_gene_stats.pl`). This calculates:
-    + s~het~ scores given by the formula:
-
-$$s_{het[i,v]}=1-\prod_{g} (1-s_{het[i,v,g]})$$
     + Number of high pLI/s~het~ genes per locus
     + s~het~ scores without disease genes or male infertility genes
+    + s~het~ scores given by the formula:
+    
+    $$s_{het[i,v]}=1-\prod_{g} (1-s_{het[i,v,g]})$$
 
 ```{bash VEP Annotation, eval=FALSE}
 
@@ -1231,7 +1227,7 @@ perl -e 'for (1..455) {my $num = sprintf("%03d", $_); print "scripts/.pl vep_inp
 cat vep_input/vep_parsed.*.txt | sort -k 1,1 -k2,2n > cnv_vep_parsed.sorted.bed
 ```
 
-## 6C. Build Final Files for Phenotype Testing
+## 7C. Build Final Files for Phenotype Testing
 
 The last thing we need to do is read in our merged CNV file, remove needless columns for phenotype testing and get in the column order that `PhenotypeTesting.Rmd` needs. This is an **example** code block and does not actually run. You need to modify it to properly set the eids column based on the file you provide to translate PennCNV split files to eids.
 

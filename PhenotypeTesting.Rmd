@@ -22,16 +22,25 @@ You can view a compiled html version of this document with all code run either w
 
 ```{r setup}
 
-knitr::opts_chunk$set(echo = TRUE, message = FALSE)
-library(biomaRt) ## Get gene lists we need
-library(readxl) ## Read Supplemental Excel tables
-library(data.table) ## Better than data.frame
-library(patchwork) ## Arranging ggplots
-library(broom) ## Makes getting covars out of lm much tidier
-library(meta) ## For doing meta analysis
-library(mratios) ## Need this to calculate 95% CIs for ratios of two means
-library(svglite) ## Need to create figure 3 properly (ggsave doesn't like anything with an alpha)
-library(tidyverse) ## Takes care of ggplot, tidyr, dplyr, and stringr
+knitr::opts_chunk$set(
+	echo = TRUE,
+	message = FALSE,
+	warning = FALSE ## Warnings turned off to squelch unecessary ggplot noise in kintted document. Have checked all for accuracy.
+)
+## Quietly Load Libraries
+load.package <- function(name) {
+  suppressMessages(suppressWarnings(library(name, quietly = T, warn.conflicts = F, character.only = T)))
+}
+
+load.package("biomaRt") ## Get gene lists we need
+load.package("readxl") ## Read Supplemental Excel tables
+load.package("data.table") ## Better than data.frame
+load.package("patchwork") ## Arranging ggplots
+load.package("broom") ## Makes getting covars out of lm much tidier
+load.package("meta") ## For doing meta analysis
+load.package("mratios") ## Need this to calculate 95% CIs for ratios of two means
+load.package("svglite") ## Need to create figure 3 properly (ggsave doesn't like anything with an alpha)
+load.package("tidyverse") ## Takes care of ggplot, tidyr, dplyr, and stringr
 ```
 
 ## 1B. Themes
@@ -594,14 +603,14 @@ mv rawdata/genelists/hg38_to_hg19_ENSG.2.txt rawdata/genelists/hg38_to_hg19_ENSG
 This section of the document is not evaluated, as we need to acquire disease gene resources from three locations. The actual acquisition of these files is trivial, but did not want to attempted to make reproduceable due to potential links breaking. If this section needs to be reproduced, download the resources at the _rough_ following locations and run the code in this section. Otherwise, move to the next section where the file produced by this section has already been generated. Locations to place necessary files and file dates used in the manuscript are listed below:
 
 1. Clinvar - https://ftp.ncbi.nlm.nih.gov/pub/clinvar/vcf_GRCh37/archive_2.0/2019/clinvar_20191003.vcf.gz
-		+  `rawdata/genelists/clinvar.vcf.gz`
-		+  date: October 3, 2019
+    +  `rawdata/genelists/clinvar.vcf.gz`
+    +  date: October 3, 2019
 2. DDG2P - http://www.ebi.ac.uk/gene2phenotype/downloads/DDG2P.csv.gz
-		+  `rawdata/genelists/DDG2P.csv`
-		+  date: November 12, 2019
+    +  `rawdata/genelists/DDG2P.csv`
+    +  date: November 12, 2019
 3. OMIM - https://www.omim.org/downloads
-		+  `rawdata/genelists/morbidmap.txt`
-		+  date: October 8, 2019
+    +  `rawdata/genelists/morbidmap.txt`
+    +  date: October 8, 2019
 
 **Note**: To download OMIM morbid map you will need to register and place a copy of this file at: `rawdata/genelists/morbidmap.txt`
 
@@ -1232,9 +1241,7 @@ UKBB Samples dropped here are derived from a few different sources:
 1. Those who failed CNV QC (n = 2,591 individuals)
 2. They were part of a batch with no calls (currently only know of batch18 - n = 4,620)
 
-All other individuals are included if they are white British ancestry and unrelated (as set in the above 'Setting Individuals To Use' section).
-
-There are also 75 individuals which exist in the CNV file but do not have IDs. I'm fairly certain these are individuals with removed consent (so good they aren't included!)
+All other individuals are included if they have broadly European ancestry and are unrelated (as set in the above 'Setting Individuals To Use' section).
 
 ```{r Build CNV Calls}
 
@@ -1859,7 +1866,7 @@ plot.result(results.cog,F,20,-1.4,0.5,"# of Individuals\nWith sHET\n> 0.15")
 
 ### Main Regression
 
-```{r Educational Attainment, fig.height=7, fig.width=8}
+```{r Educational Attainment Regression, fig.height=7, fig.width=8}
 results.ea <- data.table(crossing(maf = c(0.001,0), 
                                   gene.list = "product_sHET",
                                   y.var = "completed.college",
@@ -1976,10 +1983,10 @@ rm(mhq,icd)
 Conclusions from above are that the ICD-10 data is too sparse for us to be able to use it truly effectively. Also confirmed is that, in general, it also looks like the UKBB is healthier than the population as a whole (at least when comparing to Power et al.), which is a fairly obvious conclusion. With that in mind, we think we can only really do two different regressions:
 
 * Binary of do you have a disability that has been previously shown to be associated with [rare variant burden](https://www.sciencedirect.com/science/article/pii/S0002929718301630)?:
-		+  Schizophrenia, Autism, ADHD, Bipolar
-		+  Also have ID/DD, but we don't have that here...
+    +  Schizophrenia, Autism, ADHD, Bipolar
+    +  Also have ID/DD, but we don't have that here...
 * Binary of do you have a disability that Power et al has shown to have <0.8 drop in fertility for either gender?:
-		+  Schizophrenia, Autism, bipolar disorder, eating disorders
+    +  Schizophrenia, Autism, bipolar disorder, eating disorders
 
 For the purposes of this manuscript, we have gone for the former, although both have similar results. This code block adds a binary value for having any of those phenotypes ('ganna.binary') to our primary phenotype table.
 
@@ -2882,7 +2889,7 @@ paste0("Contribution of Cognition to Fitness: ",
        "%)")
 
 paste0("Predicted drop in IQ for sHET = 1 male  : " ,sprintf("%0.2f", model.cog[shet == 1 & sex == 1,100 - expected.iq_mid]))
-paste0("Predicted drop in IQ for sHET = 1 female: " ,sprintf("%0.2f", model.cog[shet == 2 & sex == 1,100 - expected.iq_mid]))
+paste0("Predicted drop in IQ for sHET = 1 female: " ,sprintf("%0.2f", model.cog[shet == 1 & sex == 2,100 - expected.iq_mid]))
 ```
 
 ## 6G. Fertility + Mental Health
@@ -4000,11 +4007,11 @@ plot.mh <- ggplot(model.mhq, aes(x = shet, group = sexPulse, fill = sexPulse)) +
 
 plot.fert.mh <- ggplot(model.mhq, aes(x = shet, group = sexPulse, fill = sexPulse)) + geom_line(aes(y = ratio_mid, colour = sexPulse), size=2) + geom_ribbon(aes(ymin= ratio_lower, ymax = ratio_upper), alpha = 0.5) + scale_alpha_continuous(range = c(0,1)) + sex.colours.colour + sex.colours.fill + geom_abline(intercept=1,slope=-1,linetype=2) + scale_x_continuous(name=expression(bold(s[het])), limits = c(0,1), expand = c(0,0)) + scale_y_continuous(name = "Predicted Fitness", limits = c(0.8,1.05)) + theme.figures.legend
 
-inc.plot.scizo <- ggplot(inc.mht[type == "scizo"], aes(x = shet, group = sexPulse, fill = sexPulse)) + geom_line(aes(y = mid, colour = sexPulse), size=2, position=position_dodge()) + geom_ribbon(aes(ymin= lower, ymax = upper),alpha=0.5) + scale_alpha_continuous(range = c(0,1)) + sex.colours.colour + sex.colours.fill + scale_x_continuous(name=expression(bold(s[het])), limits = c(0,1), expand = c(0,0)) + scale_y_continuous(name = "Predicted Incidence Schizo.", limits = c(0,0.1)) + theme.figures.legend
+inc.plot.scizo <- ggplot(inc.mht[type == "scizo"], aes(x = shet, group = sexPulse, fill = sexPulse)) + geom_line(aes(y = mid, colour = sexPulse), size=2) + geom_ribbon(aes(ymin= lower, ymax = upper),alpha=0.5) + scale_alpha_continuous(range = c(0,1)) + sex.colours.colour + sex.colours.fill + scale_x_continuous(name=expression(bold(s[het])), limits = c(0,1), expand = c(0,0)) + scale_y_continuous(name = "Predicted Incidence Schizo.", limits = c(0,0.1)) + theme.figures.legend
 
-inc.plot.asd <- ggplot(inc.mht[type == "asd"], aes(x = shet, group = sexPulse, fill = sexPulse)) + geom_line(aes(y = mid, colour = sexPulse), size=2, position=position_dodge()) + geom_ribbon(aes(ymin= lower, ymax = upper),alpha=0.5) + scale_alpha_continuous(range = c(0,1)) + sex.colours.colour + sex.colours.fill + scale_x_continuous(name=expression(bold(s[het])), limits = c(0,1), expand = c(0,0)) + scale_y_continuous(name = "Predicted Incidence ASD", limits = c(0,0.1)) + theme.figures.legend
+inc.plot.asd <- ggplot(inc.mht[type == "asd"], aes(x = shet, group = sexPulse, fill = sexPulse)) + geom_line(aes(y = mid, colour = sexPulse), size=2) + geom_ribbon(aes(ymin= lower, ymax = upper),alpha=0.5) + scale_alpha_continuous(range = c(0,1)) + sex.colours.colour + sex.colours.fill + scale_x_continuous(name=expression(bold(s[het])), limits = c(0,1), expand = c(0,0)) + scale_y_continuous(name = "Predicted Incidence ASD", limits = c(0,0.1)) + theme.figures.legend
 
-inc.plot.bipolar <- ggplot(inc.mht[type == "bipolar"], aes(x = shet, group = sexPulse, fill = sexPulse)) + geom_line(aes(y = mid, colour = sexPulse), size=2, position=position_dodge()) + geom_ribbon(aes(ymin= lower, ymax = upper),alpha=0.5) + scale_alpha_continuous(range = c(0,1)) + sex.colours.colour + sex.colours.fill + scale_x_continuous(name=expression(bold(s[het])), limits = c(0,1), expand = c(0,0)) + scale_y_continuous(name = "Predicted Incidence Bipolar Dis.", limits = c(0,0.1)) + theme.figures.legend
+inc.plot.bipolar <- ggplot(inc.mht[type == "bipolar"], aes(x = shet, group = sexPulse, fill = sexPulse)) + geom_line(aes(y = mid, colour = sexPulse), size=2) + geom_ribbon(aes(ymin= lower, ymax = upper),alpha=0.5) + scale_alpha_continuous(range = c(0,1)) + sex.colours.colour + sex.colours.fill + scale_x_continuous(name=expression(bold(s[het])), limits = c(0,1), expand = c(0,0)) + scale_y_continuous(name = "Predicted Incidence Bipolar Dis.", limits = c(0,0.1)) + theme.figures.legend
 
 blank <- ggplot() + geom_text(label='N/A',aes(x=0.4,y=0.5),size=5) + scale_x_continuous(name = "", limits=c(0,1)) + scale_y_continuous(name = "", limits=c(0,1)) + theme.figures.legend + theme(axis.line=element_blank(), panel.grid.major=element_blank(), axis.text.x=element_blank(), axis.text.y=element_blank(), axis.ticks=element_blank())
 
@@ -4410,11 +4417,3 @@ paste0("")
 paste0("high pLI genes (≥ 0.9) have a mean sHET value of : ",sprintf("%0.3f",mean.highpLI))
 paste0("")
 ```
-
-
-```
-
-
-
-
-

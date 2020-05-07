@@ -359,10 +359,15 @@ Reiterating what gene lists that we use here:
 
 ```{r Generate biomart resources, warning=FALSE}
 
+## Load packages silently
+load.package <- function(name) {
+  suppressMessages(suppressWarnings(library(name, quietly = T, warn.conflicts = F, character.only = T)))
+}
+
 ## First and only place code is generated
-library(biomaRt)
-library(data.table)
-library(tidyverse)
+load.package("biomaRt")
+load.package("data.table")
+load.package("tidyverse")
 
 ## Hg19
 ensembl <- useMart("ensembl", host="http://grch37.ensembl.org", dataset = "hsapiens_gene_ensembl")
