@@ -27,6 +27,7 @@ knitr::opts_chunk$set(
 	message = FALSE,
 	warning = FALSE ## Warnings turned off to squelch unecessary ggplot noise in kintted document. Have checked all for accuracy.
 )
+
 ## Quietly Load Libraries
 load.package <- function(name) {
   suppressMessages(suppressWarnings(library(name, quietly = T, warn.conflicts = F, character.only = T)))
@@ -3260,7 +3261,7 @@ make.meta.table <- function(data, is.linear,
 
   if (is.linear == T) {
     meta.result[,c("var.beta","var.stderr","var.p"):=get.meta.val.linear(data,maf,sex,gene.list),by=1:nrow(meta.result)]
-    y.axis <- expression(bold(Effect~Size~`for`~1~Unit~of~Quantified~s[het]))
+    y.axis <- expression(bold(Effect~Size~at~s[het]~burden == 1))
     plot.breaks <- c(seq(0,ymin,by=-1 * b),seq(0,ymax,by=b))
     plot.breaks <- plot.breaks[plot.breaks != block]
 
@@ -3274,7 +3275,7 @@ make.meta.table <- function(data, is.linear,
   } else {
     meta.result[,c("var.beta","var.stderr","var.p"):=get.meta.val.logistic(data,maf,sex,gene.list),by=1:nrow(meta.result)]
 
-    y.axis <- expression(bold(Odds~Ratio~`for`~1~Unit~of~Quantified~s[het]))
+    y.axis <- expression(bold(Odds~Ratio~at~s[het]~burden==1))
     plot.breaks <- c(seq(1,ymin,by=-1 * b),seq(1,ymax,by=b))
     plot.breaks <- plot.breaks[plot.breaks != block]
     
@@ -3398,11 +3399,11 @@ plot.dist.mean <- function (v) {
   ## Cumulative Density Plot of joint.product_sHET by sex
   plot.dist <- ggplot(totals,aes(product_sHET.cut,prop.2,group=sexPulse,fill=sexPulse)) +
     geom_col(position=position_dodge(1),colour="black") +
-    scale_x_discrete(name = expression(bold(Quantified~s[het]~Range)),labels=x.axis.labels.2) +
+    scale_x_discrete(name = "",labels=x.axis.labels.2) +
     scale_y_log10(name = "Proportion of Individuals",breaks=c(1,10,100,1000,10000,100000),labels=paste0(c(0.001,0.01,0.1,1,10,100),"%")) +
     geom_errorbar(aes(ymin=prop.2-ci,ymax=prop.2+ci),position=position_dodge(1),width=0) +
     sex.colours.fill +
-    theme.figures
+    theme.figures + theme(axis.text.x=element_blank())
 
   ## Percentage of Individuals With Children By Sex and Variant Type
   means <- quants[,list(mean(children.binary),sd(children.binary),sum(dummy)),by=c("sexPulse","product_sHET.cut")]
@@ -3429,11 +3430,17 @@ plot.dist.mean <- function (v) {
   
   lines <- means[product_sHET.cut=="(-1,0]"]
   
+  if (v == "DEL") {
+    label.x <- expression(bold(Deletion~s[het]~Burden))
+  } else {
+    label.x <- expression(bold(PTV~s[het]~Burden))
+  }
+  
   plot.means <- ggplot(means,aes(product_sHET.cut,mean,group=sexPulse,colour=as.factor(sexPulse))) +
     geom_hline(data=lines,aes(yintercept=mean,colour=as.factor(sexPulse)),linetype=2) +
     geom_point(position=position_dodge(0.5),shape=16,size=3) +
     geom_errorbar(aes(ymin=ci.lower,ymax=ci.upper),width=0,position=position_dodge(0.5),size=1) +
-    scale_x_discrete(name = expression(bold(Quantified~s[het]~Range)),labels=x.axis.labels.2) +
+    scale_x_discrete(name = label.x,labels=x.axis.labels.2) +
     scale_y_continuous(name="Percentage of Individuals\nWith Children",limits=c(0,100)) +
     sex.colours.colour +
     theme.figures
@@ -3471,7 +3478,7 @@ Effect of rare variants on various metrics:
 ```{r Main Text Figure 2, fig.height=8.5, fig.width=7}
 
 fig.partner <- make.meta.table(results.partner, F, title = "Partner at Home",show.x=F,b=0.25)
-fig.ea <- make.meta.table(results.ea, F, title = "Edu. Attainment",b=0.25)
+fig.ea <- make.meta.table(results.ea, F, title = "Educational Attainment",b=0.25)
 fig.hhi <- make.meta.table(results.household.income, T, title = "Household Income",show.x=F, ymin = -2.3, ymax= 0.5, block = -2, p.pos = -1.9, b = 0.5)
 fig.cog <- make.meta.table(results.cog[sex==1 | sex == 2], T, ymin = -2.3, ymax= 0.5, block = -2, p.pos = -1.9, b = 0.5, title = "Fluid Intelligence")
 
