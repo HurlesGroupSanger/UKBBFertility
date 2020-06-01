@@ -1146,62 +1146,6 @@ For how CNV data was prepared prior to this step, please see the document `CNVCa
 2. Individuals which actually have CNV data.
 3. The CNVs themselves.
 
-```{r fix, eval = F}
-
-get.header <- readRDS("/Users/eg15/Documents/Current Projects/INTERVAL/CNVCalling_Filtering/RawData/ukbb.batchAll.qcd.04032020.rds")
-header <- names(get.header)
-header <- c(header,c("locus","path.locus"))
-rm(get.header)
-
-ukbb.to.fix <- fread("rawdata/cnvresources/ukbb.unfiltered.qcdMerged.txt")
-setnames(ukbb.to.fix,names(ukbb.to.fix),header)
-
-split.files <- ukbb.to.fix[,"split.file"]
-split.files <- unique(split.files)
-split.files[,short.name:=sub(".sorted.bed.gz","",basename(split.file)),by=1:nrow(split.files)]
-
-merge.key <- fread("/Users/eg15/Documents/Current Projects/INTERVAL/CNVCalling_Filtering/UKBB_Batches/Link_file_George_Eugene.dat")
-merge.key <- merge.key[,c("ID","f.eid")]
-setnames(merge.key,"f.eid","george")
-merge.key[,george:=as.character(george)]
-
-george_to_martin <- fread("/Users/eg15/Documents/Current Projects/INTERVAL/CNVCalling_Filtering/UKBB_Batches/George_to_Martin.txt")
-george_to_martin <- george_to_martin[,c("V1","V7","V12")]
-setnames(george_to_martin, names(george_to_martin),c("george","eid","array_num"))
-george_to_martin[,george:=as.character(george)]
-george_to_martin[,eid:=as.character(eid)]
-
-merge.key <- merge(merge.key,george_to_martin,by="george")
-merge.key <- merge(split.files, merge.key,by.x = "short.name",by.y = "ID")
-merge.key <- merge.key[,c("split.file","eid")]
-ukbb.to.fix <- merge(ukbb.to.fix, merge.key, by = "split.file")
-
-cols.to.keep <- c("eid","chr","start","end","locus","Copy_Number","gt","ct","Length_bp","path.locus","Max_Log_BF","LRR_mean","LRR_median","LRR_SD","BAF_mean","BAF_median","BAF_SD","WF","BAF_drift","NumCNV","density","callrate","wes.probe.count","No_Probes","site.BAF_mean","site.BAF_SD","site.BAF_median","site.LRR_mean","site.LRR_SD","site.LRR_median","badness.score","filter.0.95.wes.support.score","wes.support.score")
-
-ukbb.to.fix[,ct:=if_else(Copy_Number < 2, "DEL", "DUP")]
-ukbb.to.fix[,ct:=as.factor(ct)]
-ukbb.to.fix[,gt:=ifelse(Copy_Number == 0 | Copy_Number == 4,2,1)]
-
-ukbb.to.fix <- ukbb.to.fix[,..cols.to.keep]
-
-to.filter <- fread("/Users/eg15/Documents/Current Projects/Fertility/RawData/cnvs/ukbb.filtered_cnv_indvs.txt")
-to.filter <- merge(to.filter,merge.key,by="split.file")
-
-fam <- fread("../../INTERVAL/CNVCalling_Filtering/UKBB_Batches/ukb44165_cal_chr1_v2_s488288.fam")
-
-wba <- UKBB.raw.phenotypes[,c("eid","22006-0.0")]
-setnames(wba,names(wba),c("eid","wba"))
-wba[,in.fam:=if_else(eid %in% fam[,V1],1,0)]
-wba[,has_cnvs:=if_else(in.fam == 0, 0, if_else(eid %in% to.filter[,eid], 0, 1))]
-wba[,has_called_cnvs:=if_else(in.fam == 0,NaN,if_else(eid %in% ukbb.to.fix[,eid],1,0))]
-table(wba[,c("has_called_cnvs","has_cnvs")],useNA = "always")
-
-write.table(wba[,c("eid","has_cnvs")],"rawdata/cnvresources/has_cnvs.txt",sep = "\t", col.names = T, row.names = F, quote = F)
-write.table(ukbb.to.fix,"rawdata/cnvresources/ukbb.cnvs.qcd.txt",sep = "\t", col.names = T, row.names = F, quote = F)
-
-```
-
-
 #### Downloading Requisite Data From UKBB
 
 Section tbd, but need to make to get two files (and place at the following location):
