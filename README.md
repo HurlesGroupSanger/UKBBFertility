@@ -62,4 +62,4 @@ This project requires the following packages/dependencies:
 
 If you use any of the materials in the repository, we would appreciate it if you cited our manuscript:
 
-    tbd
+    (https://www.biorxiv.org/content/10.1101/2020.05.26.116111v1)

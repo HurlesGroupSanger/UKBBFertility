@@ -1214,17 +1214,17 @@ split -a 3 --numeric-suffixes=1 -l 500 ../cnv_for_vep.sorted.bed cnv_for_vep.
 
 # Actual VEP command is fairly simple, but generate a script to help with parallelization:
 # Takes as it's only input the file number you need to annotate:
-scripts/annotate_vep.pl <1-455>
+scripts/annotate_vep.pl <1-457>
 
 ## 3. Merge the annotations with gene level information and calculate sHET scores:
 # Make a quick file list for this script to do male infertility/disease gene scores:
 echo -e "rawdata/genelists/diseaseGenes.txt\nrawdata/genelists/male_infertility_genes.txt" > rawdata/genelists/gene_lists.txt
 
 # This just makes a one-liner runs all the files at once, can do it however you like
-perl -e 'for (1..455) {my $num = sprintf("%03d", $_); print "scripts/.pl vep_input/vep_annotation.$num.txt > vep_input/vep_parsed.$num.txt;\n";}' | bash
+perl -e 'for (1..457) {my $num = sprintf("%03d", $_); print "./attach_gene_stats.mod.pl vep_input/vep_annotation.$num.txt > vep_input_revision/vep_parsed.$num.txt;\n";}' | bash
 
 ## Cat it all together!
-cat vep_input/vep_parsed.*.txt | sort -k 1,1 -k2,2n > cnv_vep_parsed.sorted.bed
+cat vep_input_revision/vep_parsed.*.txt | sort -k 1,1 -k2,2n > cnv_vep_parsed.revision.sorted.bed
 ```
 
 ## 7C. Build Final Files for Phenotype Testing

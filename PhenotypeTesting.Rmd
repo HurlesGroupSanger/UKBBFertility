@@ -10,7 +10,7 @@ output:
 
 # 1. Startup and Introduction
 
-This document contains data UKBB and comparisons between and within this data to the trait of interest, Fertility. If using data produced by this repo, please cite [our manuscript](https:tbd).
+This document contains UKBB data and comparisons between and within this data to the trait of interest, Fertility. If using data produced by this repo, please cite [our manuscript](https://www.biorxiv.org/content/10.1101/2020.05.26.116111v1).
 
 **Big Note**: The first part of this document involves running scripts to generate text files required for downstream analysis. _PLEASE_ start there and make sure all scripts ran successfully. All scripts for this section are available in the folder `./scripts/` and _will not_ run as part of this document. There are two additional resources that you need to download -- the OMIM morbid map, which requires registration and DDG2P. See the section [on disease genes](#disease_genes) below.
 
@@ -42,6 +42,7 @@ load.package("meta") ## For doing meta analysis
 load.package("mratios") ## Need this to calculate 95% CIs for ratios of two means
 load.package("svglite") ## Need to create figure 3 properly (ggsave doesn't like anything with an alpha)
 load.package("tidyverse") ## Takes care of ggplot, tidyr, dplyr, and stringr
+load.package("rcompanion") ## For getting incremental pseudo-R2
 ```
 
 ## 1B. Themes
@@ -116,13 +117,21 @@ ukbconv ukb00000.enc_ukb docs
 # ukb00000.html
 ```
 
+**Note** the following processing data expects the "ukb00000.*" data to be in the unpacked `rawdata/phenofiles/` directory!
+
 This code chunk extracts phenotypes of relevance from the master phenotype file that is downloaded and processed above. It is run with the script: `./scripts/extract_phenotypes.pl`.
 
 This script is slower than it should be due to an issue with text format encoding of the UKBB-created TSV file on MacOS. If running this code on a UNIX system, would suggest switching the 'exec' call at the bottom of this script to use cut for additional speed. It should mean the script executes in ~30s rather than 5mins.
 
 ```{bash Extract Phenotypes, eval = F}
 
-./scripts/extract_phenotypes.pl
+## First do most fields:
+./scripts/extract_phenotypes.pl rawdata/phenofiles/fields_to_extract.txt rawdata/phenofiles/ukbb_phenotypes.txt
+
+## Have to extract first incidence data seprately as it requires additional processing:
+## P.S. Make sure you run the above command first!!!
+./scripts/extract_phenotypes.pl rawdata/phenofiles/fi_fields_to_extract.txt rawdata/phenofiles/fi_phenotypes.txt
+./scripts/process_first_incidence.pl
 
 ```
 
@@ -131,7 +140,8 @@ This script is slower than it should be due to an issue with text format encodin
 Again, this is just an example on how relatedness information is accquired from UKBB, code does not actually run. It proceeds in two basic steps:
 
 1. Download the relatedness file using the (ukbgene)[http://biobank.ndph.ox.ac.uk/showcase/refer.cgi?id=664] tool
-2. Running the provided script to generate a list of individuals to filter - at: `./scripts/get_relateds.R`.
+2. Place the file in `./rawdata/phenofiles/`
+3. Running the provided script to generate a list of individuals to filter - at: `./scripts/get_relateds.R`.
 
 ```{bash Process Relatedness, eval = F}
 
@@ -142,7 +152,6 @@ ukbgene rel
 ./scripts/get_relateds.R ukbXXXXX_rel_sYYYYYY.dat > raw_data/phenofiles/relateds.out
 ## Format the output file to be readable by R
 perl -ne 'if ($_ =~ /\"(\d{7})\"/) {print "$1\n";}' raw_data/phenofiles/relateds.out > raw_data/phenofiles/relateds.txt
-
 ```
 
 # 3. Phenotype Data
@@ -173,14 +182,14 @@ This also filters out individuals that are not broadly European.
 ```{r Process Generic Phenotypes}
 
 ## Data table of all UKBB population data:
-PCAs<-c(1:10)
+PCAs<-c(1:30)
 for (i in PCAs) {
   PCAs[i] <- paste("22009-0",i,sep=".")
 }
-fields <- c("eid","22006-0.0","31-0.0","21022-0.0",PCAs)
+fields <- c("eid","22006-0.0","31-0.0","21022-0.0","34-0.0","52-0.0",PCAs)
 UKBB.phenotype.data <- UKBB.raw.phenotypes[,..fields]
 
-setnames(UKBB.phenotype.data,c(fields),c("eid","white.british.ancestry","sexPulse","agePulse","PC1","PC2","PC3","PC4","PC5","PC6","PC7","PC8","PC9","PC10"))
+setnames(UKBB.phenotype.data,c(fields),c("eid","white.british.ancestry","sexPulse","agePulse","birth.year","birth.month","PC1","PC2","PC3","PC4","PC5","PC6","PC7","PC8","PC9","PC10","PC11","PC12","PC13","PC14","PC15","PC16","PC17","PC18","PC19","PC20","PC21","PC22","PC23","PC24","PC25","PC26","PC27","PC28","PC29","PC30"))
 
 ## Remove all non-white British (determined direct by UKBB and taken from the pheno file)
 UKBB.phenotype.data <- UKBB.phenotype.data[!is.na(white.british.ancestry)]
@@ -196,6 +205,13 @@ UKBB.phenotype.data[,sexPulse:=ifelse(sexPulse == 0, 2, 1)]
 ## Add agePulse.squared covar:
 UKBB.phenotype.data[,agePulse.squared:=agePulse^2]
 paste0("Number of Individuals after filtering: ",nrow(UKBB.phenotype.data))
+
+## Curate birthdays:
+## Have to set everybody's birthday as the 15th since UKBB doesn't want to give specific days out. Should be a reasonable approximation as it's the closest possible day for all individuals...
+UKBB.phenotype.data[,birthday:=paste(birth.year,sprintf("%02d",birth.month),"15",sep="-")]
+UKBB.phenotype.data[,birthday:=as.Date(birthday, format = "%Y-%m-%d")]
+UKBB.phenotype.data[,birth.year:=NULL]
+UKBB.phenotype.data[,birth.month:=NULL]
 
 rm(PCAs,fields,i)
 ```
@@ -282,7 +298,6 @@ fertility.metrics[,same.sex:=if_else(same.sex==-9,as.numeric(NA),same.sex)]
 UKBB.phenotype.data <- merge(UKBB.phenotype.data,fertility.metrics,by="eid")
 rm(fertility.metrics)
 ```
-
 
 ## 3C. Fluid Intelligence
 
@@ -399,6 +414,91 @@ rm(email.data)
 
 ### ICD 10 Coding
 
+#### Hospital Episode Statistics
+
+This code pulls in all Hospital Episode Statistic (HES) ICD-10 codes for all individuals. Using this to test for 
+
+$$ has.children \sim s_{het[i,v]} + has.icd.code + age + age^2 + PC1..PC10 $$
+
+In the section(s) below.
+
+```{r All ICD codings}
+
+## Load most HES ICD-10 Codes except cancer
+cols <- names(UKBB.raw.phenotypes)[grep("eid|41202|41204",names(UKBB.raw.phenotypes))]
+hes.data.long <- data.table(pivot_longer(UKBB.raw.phenotypes[,..cols],-eid,values_to="icd.code",values_drop_na = T))
+hes.data.long <- hes.data.long[,c("eid","icd.code")]
+
+## Remove duplicate primary/secondary codes:
+hes.data.long <- unique(hes.data.long)
+
+## Remove any cancer codes that we will get from cancer-specific icd.data
+hes.data.long <- hes.data.long[grepl("C",icd.code) == F & grepl("D[0-4]", icd.code, perl = T) == F & grepl("O0", icd.code, perl = T) == F]
+
+## Load Cancer codings:
+cols <- names(UKBB.raw.phenotypes)[grep("eid|40006",names(UKBB.raw.phenotypes))]
+cancer.data.long <- data.table(pivot_longer(UKBB.raw.phenotypes[,..cols],-eid,values_to="icd.code",values_drop_na = T))
+cancer.data.long <- cancer.data.long[,c("eid","icd.code")]
+
+## Mash together regular ICD10 and Cancer codes:
+hes.data.long <- rbind(hes.data.long, cancer.data.long)
+
+## Generate shorter string to match:
+hes.data.long[,icd.category:=substr(icd.code,1,3),by=1:nrow(hes.data.long)]
+
+```
+
+#### First Incidence ICD Codings
+
+We have gotten access to the first incidence ICD-10 codings, which we hope will represent a more accurate depiction of conditions an individual has, as well as provide a way of only testing individuals with conditions prior to child-bearing age. We extract fields the same way as before, and then create a data dictionary to link up each code to it's relevant UKBB field. This will incorperate all fields from 130000-132605. We also incorperate field 42040 here to exclude individuals who don't have GP records. This cuts our sample size in half, but is better than having differential ascertainment in my opinion.
+
+```{r read and process}
+
+first.incidence.data <- fread("rawdata/phenofiles/fi_phenotypes.txt")
+first.incidence.data[,eid:=as.character(eid)]
+
+valid.first.incidence.indvs <- fread("rawdata/phenofiles/valid_fi_indvs.txt")
+valid.first.incidence.indvs[,eid:=as.character(eid)]
+
+## Pretty certain everybody has at least one GP code... so this doesn't do anything, but just to be sure...
+first.incidence.data <- first.incidence.data[eid %in% valid.first.incidence.indvs[!is.na(num.gp.codes),eid]]
+first.incidence.data <- merge(first.incidence.data,UKBB.phenotype.data[,c("eid","birthday")],by="eid")
+first.incidence.data[,date:=as.Date(date, format = "%Y-%m-%d")]
+
+## Set a flag in the phenotype data for people I should include:
+UKBB.phenotype.data[,has.first.incidence.data:=eid %in% valid.first.incidence.indvs[!is.na(num.gp.codes),eid]]
+
+## Get ~age of incidence while taking into account special codes:
+first.incidence.data[,age.at.incidence:=if_else(date == as.Date("2037-07-07"), -1, ## This is an error code for incidence in the future and is presumably an error.
+                                                if_else(date == as.Date("1901-01-01"), -1, ## This is an error code for incidence before birth (doesn't appear to be any...?)
+                                                        if_else(date == as.Date("1902-02-02"), 0, ## This is congenital conditions
+                                                                if_else(date == as.Date("1903-03-03"), 0.5, ## This is for neonatal conditions 
+                                                                        as.numeric(difftime(date, birthday), units = "days") / 365))))] ## This is for all other cases. I ignore leap years, leave me alone. (Also, I don't have the exact birthday, so leap years is the least of my worries)
+```
+
+This is just to generate equivalent data from FI data as is generated for HES and MHQ data.
+
+```{r translate to table format}
+
+## This is very ugly but was the easiest way for me to tabulate it from another datasource to ensure rough concistency. 
+codes <- c("F20",
+"F20","F20","F20","F20","F20","F20","F20","F20","F20","F23","F23","F25", "F25","F25","F25","F25","F25","F84","F84","F84","F84","F30", "F30","F30","F30","F30","F30","F31", "F31","F31","F31","F31","F31","F31","F31","F31","F31","F31","F32", "F32","F32","F32","F32","F32","F32","F33", "F33","F33","F33","F33","F33","F33","F33","F50", "F50","F50","F50","F50","F50","F50","F40","F40","F42","F42","F42","F42","F42","F42","F41","F40","F60","F60","F60","F60","F60","F60","F60","F60","F60","F60","F60","F61","F41","F90","N46")
+condition <- c('scizo','scizo','scizo','scizo','scizo','scizo','scizo','scizo','scizo','scizo','scizo','scizo','scizo','scizo','scizo','scizo','scizo','scizo','asd','asd','asd','asd','bipolar','bipolar','bipolar','bipolar','bipolar','bipolar','bipolar','bipolar','bipolar','bipolar','bipolar','bipolar','bipolar','bipolar','bipolar','bipolar','bipolar','depression','depression','depression','depression','depression','depression','depression','depression','depression','depression','depression','depression','depression','depression','depression','eating_disorders','eating_disorders','eating_disorders','eating_disorders','eating_disorders','eating_disorders','eating_disorders','phobia','phobia','ocd','ocd','ocd','ocd','ocd','ocd','gen_anxiety','phobia','gen_personality','gen_personality','gen_personality','gen_personality','gen_personality','gen_personality','gen_personality','gen_personality','gen_personality','gen_personality','gen_personality','gen_personality','gen_anxiety','add','infertility')
+
+condition.key <- data.table(code=codes, table.condition=condition)
+condition.key <- unique(condition.key)
+
+first.incidence.data <- merge(first.incidence.data, condition.key, by = "code", all.x = T)
+condition.table <- data.table(table(first.incidence.data[,c("eid","table.condition")]))
+condition.table[,N:=if_else(N == 0, 0, 1)]
+condition.table <- data.table(pivot_wider(condition.table, id_cols = eid, names_from=table.condition, values_from = N))
+setnames(condition.table,names(condition.table)[-1],paste("fi",names(condition.table)[-1],sep="."))
+
+UKBB.phenotype.data <- merge(UKBB.phenotype.data,condition.table[,c("eid","fi.scizo","fi.bipolar","fi.asd","fi.add")],by="eid",all.x=T)
+```
+
+#### Specific HES ICD-10 Codings
+
 The ICD-10 codes that I have used and their equivalancies to the MHQ section are listed in the perl script below. For the traits covered in [Power et al.](https://jamanetwork.com/journals/jamapsychiatry/article-abstract/1390257) I have stuck with their exact codes to enable replication, for the others I have searched for equivalents using various articles on those particular subjects.
 
 This set of data needs to be processed in two steps, as I use perl to process the actual phenotypes (it's much easier than in R). Need to first print out a text file of the raw phenotypes I need, process it with Perl, and then read back in and add to the final phenotype table.
@@ -419,12 +519,11 @@ write.table(icd.data,file="rawdata/phenofiles/ICD10.data.txt",sep="\t",row.names
 
 ```{r process ICD10}
 
-icd.data <- fread("rawdata/phenofiles/ICD10.data.processed.txt")
-icd.data[,eid:=as.character(eid)]
+hes.data <- fread("rawdata/phenofiles/ICD10.data.processed.txt")
+hes.data[,eid:=as.character(eid)]
 
-setnames(icd.data, names(icd.data), c("eid",paste("icd",names(icd.data)[2:length(names(icd.data))],sep=".")))
-
-UKBB.phenotype.data <- merge(UKBB.phenotype.data,icd.data,by="eid",all.x=T)
+setnames(hes.data, names(hes.data), c("eid",paste("hes",names(hes.data)[2:length(names(hes.data))],sep=".")))
+UKBB.phenotype.data <- merge(UKBB.phenotype.data,hes.data[,c("eid","hes.scizo","hes.bipolar","hes.asd","hes.add")],by="eid",all.x=T)
 ```
 
 ### Mental Health Questionnaire
@@ -475,8 +574,7 @@ setnames(mhq.data, names(mhq.data), c("eid",paste("mhq",names(mhq.data)[2:length
 
 ## Convert answered MHQ to binary:
 mhq.data[,mhq.answered_mhq:=if_else(is.na(mhq.answered_mhq),0,1)]
-
-UKBB.phenotype.data <- merge(UKBB.phenotype.data,mhq.data,by="eid",all.x=T)
+UKBB.phenotype.data <- merge(UKBB.phenotype.data,mhq.data[,c("eid","mhq.scizo","mhq.bipolar","mhq.asd","mhq.add","mhq.answered_mhq")],by="eid",all.x=T)
 ```
 
 ### Comparing MH Data Sources:
@@ -487,24 +585,62 @@ UKBB.phenotype.data <- merge(UKBB.phenotype.data,mhq.data,by="eid",all.x=T)
 totals.mhq <- mhq.data[,lapply(.SD, sum,na.rm=T),.SDcols=names(mhq.data)[2:length(names(mhq.data))]]
 totals.mhq <- data.table(pivot_longer(totals.mhq,cols=names(totals.mhq),names_sep="\\.",names_to = c(".value","condition")))
 
-## Totals:
-totals.icd10 <- icd.data[,lapply(.SD, sum,na.rm=T),.SDcols=names(icd.data)[2:length(names(icd.data))]]
-totals.icd10 <- data.table(pivot_longer(totals.icd10,cols=names(totals.icd10),names_sep="\\.",names_to = c(".value","condition")))
+## Totals HES:
+totals.hes <- hes.data[,lapply(.SD, sum,na.rm=T),.SDcols=names(hes.data)[2:length(names(hes.data))]]
+totals.hes <- data.table(pivot_longer(totals.hes,cols=names(totals.hes),names_sep="\\.",names_to = c(".value","condition")))
+
+## Totals FI:
+totals.fi <- condition.table[,lapply(.SD, sum,na.rm=T),.SDcols=names(condition.table)[2:length(names(condition.table))]]
+totals.fi <- data.table(pivot_longer(totals.fi,cols=names(totals.fi),names_sep="\\.",names_to = c(".value","condition")))
 
 n.mhq <- totals.mhq[condition=="answered_mhq",mhq]
-n.icd10 <- nrow(icd.data)
+n.hes <- nrow(hes.data)
+n.fi <- nrow(condition.table)
 
 totals.mhq[,prop:=(mhq/n.mhq)*100]
-totals.icd10[,prop:=(icd/n.icd10)*100]
+totals.hes[,prop:=(hes/n.hes)*100]
+totals.fi[,prop:=(fi/n.fi)*100]
 
 setnames(totals.mhq,c("mhq","prop"),c("value.mhq","prop.mhq"))
-setnames(totals.icd10,c("icd","prop"),c("value.icd10","prop.icd10"))
+setnames(totals.hes,c("hes","prop"),c("value.hes","prop.hes"))
+setnames(totals.fi, c("fi","prop"),c("value.fi","prop.fi"))
 
-totals <- merge(totals.mhq,totals.icd10,by="condition")
+totals <- merge(totals.mhq, totals.hes,by="condition",all.y = T)
+totals <- merge(totals, totals.fi, by = "condition", all.x = T)
 
-ggplot(totals,aes(prop.mhq,prop.icd10)) + geom_point() + scale_x_log10(name = "MHQ Proportion",limits=c(1e-2,1e1)) + scale_y_log10(name="ICD-10 Proportion",limits=c(1e-2,1e1)) + geom_text(aes(label=condition)) + geom_abline(linetype = 2, colour = "red") + theme
+ggplot(totals,aes(prop.hes,prop.mhq)) + geom_point() + scale_x_log10(name="HES Proportion",limits=c(1e-2,1e1)) + scale_y_log10(name="MHQ Proportion",limits=c(1e-2,1e1)) + geom_text(aes(label=condition)) + geom_abline(linetype = 2, colour = "red") + theme
 
-rm(totals.mhq,totals.icd10,n.mhq,n.icd10,totals,mhq.data,icd.data)
+ggplot(totals,aes(prop.mhq,prop.fi)) + geom_point() + scale_x_log10(name = "MHQ Proportion",limits=c(1e-2,1e1)) + scale_y_log10(name="FI Proportion",limits=c(1e-2,1e1)) + geom_text(aes(label=condition)) + geom_abline(linetype = 2, colour = "red") + theme
+
+ggplot(totals,aes(prop.hes,prop.fi)) + geom_point() + scale_x_log10(name = "HES Proportion",limits=c(1e-2,1e1)) + scale_y_log10(name="FI Proportion",limits=c(1e-2,1e1)) + geom_text(aes(label=condition)) + geom_abline(linetype = 2, colour = "red") + theme
+
+rm(totals.mhq,totals.hes,n.mhq,n.hes,totals,mhq.data,hes.data)
+```
+
+## 3H. Neutral Phenotypes
+
+Purpose of these phenotypes is to provide a test against s[het] for a phenotype we do not expect to have a (strong) genetic component to test to make sure there is no bias in our ascertainment:
+
+* Fresh Fruit Intake (Field 1309)
+* Handedness (Field 1707)
+* Hair colour (Field 1747)
+
+```{r neutral phenotypes}
+
+neutral.phenos <- UKBB.raw.phenotypes[,c("eid","1309-0.0","1707-0.0","1747-0.0")]
+
+neutral.phenos[,fresh.fruit:=ifelse(is.na(`1309-0.0`),NA,
+                                     ifelse(`1309-0.0` < 0,NA,`1309-0.0`))]
+
+neutral.phenos[,handedness:=ifelse(`1707-0.0` == "NaN" | is.na(`1707-0.0`), NA,
+                                    ifelse(`1707-0.0`==1,0,
+                                            ifelse(`1707-0.0`==2,1,NA)))]
+
+neutral.phenos[,is.blonde:=if_else(is.na(`1747-0.0`) | `1747-0.0` < 0, NaN,
+                                   if_else(`1747-0.0` == 1, 1, 0))]
+
+UKBB.phenotype.data <- merge(UKBB.phenotype.data,neutral.phenos[,c("eid","fresh.fruit","handedness","is.blonde")],by="eid",all.x=T)
+
 ```
 
 # 4. Assembling Sequencing/Array Data
@@ -514,7 +650,8 @@ rm(totals.mhq,totals.icd10,n.mhq,n.icd10,totals,mhq.data,icd.data)
 We use several genelists as part of this project:
 
 1. pLI information from the [gnomAD project](https://storage.googleapis.com/gnomad-public/release/2.1.1/constraint/gnomad.v2.1.1.lof_metrics.by_gene.txt.bgz).
-2. s~het~ from [Weghorn et al.](https://doi.org/10.1093/molbev/msz092). The reference file is included in this repository (`raw_data/genelist/shet.weghorn.txt`).
+2. s~het~ from [Weghorn et al.](https://doi.org/10.1093/molbev/msz092). The reference file is included in this repository (`rawdata/genelist/shet.weghorn.txt`).
+    + We also, for comparative purposes, use the old s~het~ from [Cassa et al.](https://www.nature.com/articles/ng.3831) which is included in this repository as well (`rawdata/genelist/shet.cassa.txt`)
 3. ENSEMBL-downloaded resources from [BioMart](https://www.ensembl.org/biomart/martview/0511514c231557b5d24ace4e8f7862e0).
 4. Disease genes from ClinVar, DDG2P, and OMIM (see that section for links).
 5. Male Infertility Genes from [this paper](https://academic.oup.com/humrep/article/34/5/932/5377831).
@@ -548,9 +685,11 @@ rm(hg19.table,hg38.table,ensembl)
 ```{bash Generate sHET gene lists}
 
 perl -ane 'chomp $_; @F = split("\t", $_); print "$F[0]\t$F[7]\n";' rawdata/genelists/shet.weghorn.txt > rawdata/genelists/shet.processed.weghorn.txt
+perl -ane 'chomp $_; @F = split("\t", $_); print "$F[0]\t$F[1]\n";' rawdata/genelists/shet.cassa.txt > rawdata/genelists/shet.processed.cassa.txt
 
 ## sHET gene lists (have to attach ENSG):
 scripts/matcher.pl -file1 rawdata/genelists/hg19.genes.txt -col1 5 -file2 rawdata/genelists/shet.processed.weghorn.txt -r | perl -ane 'chomp $_; print "$F[2]\t$F[0]\t$F[1]\t$F[6]\n";' > rawdata/genelists/shet.hgnc.txt
+scripts/matcher.pl -file1 rawdata/genelists/hg19.genes.txt -col1 5 -file2 rawdata/genelists/shet.processed.cassa.txt -r | perl -ane 'chomp $_; print "$F[2]\t$F[0]\t$F[1]\t$F[6]\n";' > rawdata/genelists/shet.cassa.hgnc.txt
 ```
 
 ### Hg19 Gene Lists
@@ -679,9 +818,9 @@ rm(ddg2p, develGenes, omimGenes, clinvarVCFfiltered, clinvarGenes, hgnc.to.ENSG,
 
 This is a list of genes confirmed as playing a role in male infertility from [Manon Oud and Joris Veltman](https://academic.oup.com/humrep/article/34/5/932/5377831). We download and process the data direct from thier supplement (Table S3-S6):
 
-**Note**: I have no idea if the link below will work for everyone. If it doesn't, download the table manually from [here](https://academic.oup.com/humrep/article/34/5/932/5377831#supplementary-data) and set the name of the file to `rawdata/genelists/male_infertility_genes.xlsx`
+**Note**: I have no idea if the link below will work for everyone. If it doesn't, download "Supplementary Table 3-6" manually from [here](https://academic.oup.com/humrep/article/34/5/932/5377831#supplementary-data) and set the name of the file to `rawdata/genelists/male_infertility_genes.xlsx`
 
-```{bash Get Male Infertility Genes}
+```{bash Get Male Infertility Genes, eval = F}
 
 curl -L -o rawdata/genelists/male_infertility_genes.xlsx "https://oup.silverchair-cdn.com/oup/backfile/Content_public/Journal/humrep/34/5/10.1093_humrep_dez022/2/dez022_supplementary_tables_siii_-_svi_final.xlsx?Expires=1591021841&Signature=Fs~qzUue5gM-9WRPnYlSzzQ1kQpryWdxzLqW1Yx74QHgzCVgGzeuNyf2ZhyqDRTUSmWoaPTHi-O~PXLJRsW~jsJKq8YVr-mGYlbJ9hb40YJIulotNzUiY1mIRYyS7MTvncojcWo9xwEfB~-KNeguJbfX7dv6f4RgDtHX1ne59zK9kueOK-jJRrzrW73Xb07JtMuGM3ChvbFAObx4-9cPg44U~JzEERrAoBZjkUuqt1tEQ2EM70Yy26FL-v34-P2nu3BtV3hulfWfk9dzdMP-hRupRkwfFJ3RaaWU5iboHwT9srQlRMEkJ0XHBp8MeeImXgFJAxzC3EPYhU4YgYpa7w__&Key-Pair-Id=APKAIE5G5CRDK6RD3PGA"
 
@@ -715,6 +854,12 @@ scripts/matcher.pl -file1 rawdata/genelists/hg19.genes.txt -file2 rawdata/geneli
 
 ```
 
+```{bash Annotate Mouse Infertility Genes}
+
+scripts/matcher.pl -file1 rawdata/genelists/hg19.genes.txt -file2 rawdata/genelists/mouse_infertility_genes.txt -col1 5 -r | perl -ne 'chomp $_; @F = split("\t", $_); splice(@F, 4, 9); print join("\t", @F) . "\n";' > rawdata/genelists/mouse_infertility_genes.annotated.txt
+
+```
+
 ## 4B. Load Gene Lists For Phenotype Testing
 
 ### Generic Lists
@@ -740,6 +885,11 @@ shet.genes[,sHET.val.binary:=cut(sHET.val,breaks=c(0,0.15,1),labels = c("lt_015"
 
 print(paste0("Total number of genes with sHET value                       : ", nrow(shet.genes)))
 print(paste0("Total number of genes with sHET value in both hg19 and hg38 : ", nrow(merge(shet.genes,gene.translate))))
+
+## Load Cassa sHET genes
+shet.genes.cassa <- fread("rawdata/genelists/shet.cassa.hgnc.txt")
+## Remember, we had to annotate sHET with hg38 gene IDs
+setnames(shet.genes.cassa,names(shet.genes.cassa),c("hg19.GENE","GENE","sHET.val","HGNC.ID"))
 
 ## Load pLI genes:
 pli.genes <- fread("rawdata/genelists/hg19.all_genes_with_pli.txt")
@@ -837,6 +987,14 @@ male.infertility.genes <- fread("rawdata/genelists/male_infertility_genes.annota
 setnames(male.infertility.genes,names(male.infertility.genes),c("GENE","inheritance","evidence","hg19.GENE"))
 
 print(paste0("Number of male infertility genes: ", nrow(male.infertility.genes)))
+```
+### Mouse Infertility Genes
+
+```{r Load Male Infertility Genes}
+mouse.infertility.genes <- fread("rawdata/genelists/mouse_infertility_genes.annotated.txt",header=F)
+setnames(mouse.infertility.genes,names(mouse.infertility.genes),c("GENE","hg19.GENE","chr","start"))
+
+print(paste0("Number of mouse infertility genes: ", nrow(mouse.infertility.genes)))
 ```
 
 ## 4C. Gene Expression Data
@@ -1135,6 +1293,76 @@ setnames(quants,c("product_sHET"),c("product_sHET_no_disease"))
 snv.counts <- merge(snv.counts,quants,by=c("sample_id","allele.freq","type"),all.x=T)
 snv.counts[,product_sHET_no_disease:=if_else(is.na(product_sHET_no_disease),0,product_sHET_no_disease)]
 
+## Then do no mouse infertility list
+quants <- data.table()
+shet.quant.table <- data.table(crossing(allele.freq=unique(snv.counts[,allele.freq]),type=unique(snv.counts[,type])))
+
+for (i in c(1:nrow(shet.quant.table))) {
+  
+  returned <- quantify.shet.snv(shet.quant.table[i,allele.freq],
+                                shet.quant.table[i,type],
+                                mouse.infertility.genes[,hg19.GENE])
+
+  returned[,allele.freq:=shet.quant.table[i,allele.freq]]
+  returned[,type:=shet.quant.table[i,type]]
+  
+  quants <- bind_rows(quants,returned)
+  
+}
+
+setnames(quants,c("product_sHET"),c("product_sHET_no_mouse_infertility"))
+
+snv.counts <- merge(snv.counts,quants,by=c("sample_id","allele.freq","type"),all.x=T)
+snv.counts[,product_sHET_no_mouse_infertility:=if_else(is.na(product_sHET_no_mouse_infertility),0,product_sHET_no_mouse_infertility)]
+
+
+rm(quants,shet.quant.table,returned)
+```
+
+And finally calculate product s~het~ for values derived from Cassa et al.
+
+```{r old shet}
+
+quantify.shet.snv <- function(maf, type, to.remove=c()) {
+    
+    ## Filter on frequency cutoff and gene list
+    if (maf == 0) {
+      returned <- variants.UKBB[UKBB.AC == 1 & chr!="X" & chr!="Y" & CSQ == type & !GENE %in% to.remove]
+    } else {
+      returned <- variants.UKBB[UKBB.AF <= maf & chr!="X" & chr!="Y" & CSQ == type & !GENE %in% to.remove]
+    }
+    
+    returned <- merge(returned,shet.genes.cassa[,c("hg19.GENE","sHET.val")],by.x="GENE",by.y="hg19.GENE")
+    returned <- returned[,list(1-prod(1-sHET.val)),by="eid"]
+
+    setnames(returned,c("eid","V1"),c("sample_id","product_sHET"))
+    returned[,allele.freq:=maf]
+    returned[,type:=type]
+    
+    return(returned)
+
+}
+
+quants <- data.table()
+shet.quant.table <- data.table(crossing(allele.freq=unique(snv.counts[,allele.freq]),type=unique(snv.counts[,type])))
+
+for (i in c(1:nrow(shet.quant.table))) {
+  
+  returned <- quantify.shet.snv(shet.quant.table[i,allele.freq],
+                                shet.quant.table[i,type])
+
+  returned[,allele.freq:=shet.quant.table[i,allele.freq]]
+  returned[,type:=shet.quant.table[i,type]]
+  
+  quants <- bind_rows(quants,returned)
+  
+}
+
+setnames(quants,"product_sHET","product_sHET_old")
+
+snv.counts <- merge(snv.counts,quants,by=c("sample_id","allele.freq","type"),all.x=T)
+snv.counts[,product_sHET_old:=if_else(is.na(product_sHET_old),0,product_sHET_old)]
+
 rm(quants,shet.quant.table,returned)
 ```
 
@@ -1168,8 +1396,8 @@ This file was created as part of CNV QC in the `CNVCalling_Filtering.Rmd` docume
 ```{r Build Annotations, fig.height=4, fig.width=10}
 
 ## Get annotation information:
-annotations<-fread("rawdata/cnvresources/cnv_vep_parsed.sorted.bed")
-setnames(annotations,names(annotations),c("chr","start","end","ct","genes","plis","shets","highPLI","highsHET","product_sHET","product_sHET_no_disease","product_sHET_no_male_infertility"))
+annotations<-fread("rawdata/cnvresources/cnv_vep_parsed.revision.sorted.bed")
+setnames(annotations,names(annotations),c("chr","start","end","ct","genes","plis","shets","highPLI","highsHET","product_sHET","product_sHET_old","product_sHET_no_disease","product_sHET_no_male_infertility","product_sHET_no_mouse_infertility"))
 
 # Add a matchable locus:
 annotations[,locus:=paste0(chr,":",start,"-",end)]
@@ -1197,12 +1425,12 @@ build.omics.map <- function(cnv.file, id.name, merge.key) {
   annotated.cnvs.qcd[,eid:=as.character(eid)]
   
   # Add impact information
-  annotated.cnvs.qcd <- merge(annotated.cnvs.qcd,annotations[,c("ct","genes","highPLI","highsHET","product_sHET","product_sHET_no_disease","product_sHET_no_male_infertility","locus")],by=c("locus","ct"))
+  annotated.cnvs.qcd <- merge(annotated.cnvs.qcd,annotations[,c("ct","genes","highPLI","highsHET","product_sHET","product_sHET_old","product_sHET_no_disease","product_sHET_no_male_infertility","product_sHET_no_mouse_infertility","locus")],by=c("locus","ct"))
 
   for (g in names(gene.lists)) {
     annotated.cnvs.qcd[,eval(g):=get(g)*gt]
   }
-  
+
   return(annotated.cnvs.qcd)
   
 }
@@ -1231,7 +1459,7 @@ get.gene.counts.cnvs <- function (maf, type) {
   
   samp.size <- nrow(samples.UKBB.cnv)
   test <- ukbb.annotated.cnvs.qcd[eid %in% samples.UKBB.cnv[,eid] & filter.0.95.wes.support.score == T & ct == type]
-  
+
   allele.frq <- test[ct==type,sum(gt),by=c("locus")]
   allele.frq[,frq:=V1/(samp.size*2)]
   setnames(allele.frq,"V1","ac")
@@ -1242,13 +1470,13 @@ get.gene.counts.cnvs <- function (maf, type) {
   
   if (maf == 0) {
     test.counted <- test[ac == 1,lapply(.SD, sum),by="eid", .SDcols=g.names]
-    test.counted.product <- test[ac == 1, list(1-prod(1-product_sHET),1-prod(1-product_sHET_no_male_infertility),1-prod(1-product_sHET_no_disease)),by="eid"]
+    test.counted.product <- test[ac == 1, list(1-prod(1-product_sHET),1-prod(1-product_sHET_old),1-prod(1-product_sHET_no_male_infertility),1-prod(1-product_sHET_no_disease),1-prod(1-product_sHET_no_mouse_infertility)),by="eid"]
   } else {
     test.counted <- test[frq <= maf,lapply(.SD, sum),by="eid", .SDcols=g.names]
-    test.counted.product <- test[frq <= maf, list(1-prod(1-product_sHET),1-prod(1-product_sHET_no_male_infertility),1-prod(1-product_sHET_no_disease)),by="eid"]
+    test.counted.product <- test[frq <= maf, list(1-prod(1-product_sHET),1-prod(1-product_sHET_old),1-prod(1-product_sHET_no_male_infertility),1-prod(1-product_sHET_no_disease),1-prod(1-product_sHET_no_mouse_infertility)),by="eid"]
   }
   
-  setnames(test.counted.product,c("V1","V2","V3"),c("product_sHET","product_sHET_no_male_infertility","product_sHET_no_disease"))
+  setnames(test.counted.product,c("V1","V2","V3","V4","V5"),c("product_sHET","product_sHET_old","product_sHET_no_male_infertility","product_sHET_no_disease","product_sHET_no_mouse_infertility"))
   final.stats <- merge(samples.UKBB.cnv,test.counted,by="eid",all.x=T)
   final.stats <- merge(final.stats,test.counted.product,by="eid",all.x=T)
   final.stats[,allele.freq:=maf]
@@ -1320,6 +1548,14 @@ format.sex.burden.PTV <- sex.burden.calc("LOF_HC")
 format.sex.burden.PTV
 ```
 
+### Add A Covariate for Having WES Data
+
+Need this value in the UKBB Phenotype data.table to be able to filter out WES individuals when running Deletion models so that meta analysis isn't biased in anyway.
+
+```{r add WES tag}
+UKBB.phenotype.data[,has.wes:=eid %in% samples.UKBB[,eid]]
+```
+
 # 5. Variant Burden Impact on Traits
 
 ## 5A. Function for Linear Modeling
@@ -1346,23 +1582,24 @@ run.regression <- function(maf,
                            return.data = F,
                            remove.zeros = F,
                            remove.sequenced = T,
-                           cutoff.high = F) {
+                           cutoff.high = F,
+                           num.pcs = 30) {
  
-  phenotypes <- UKBB.phenotype.data
   id.name <- "eid"
   
   cols.to.keep <- c("sample_id",gene.list)
   final.stats <- variant.counts[type == variant.type & allele.freq == maf,..cols.to.keep]
 
-  if (remove.sequenced == T & (variant.type == "DEL" | variant.type == "DUP")) {
-    final.stats <- final.stats[!sample_id %in% samples.UKBB[,eid]]
-  }
-  
   if (cutoff.high == T & (variant.type == "DEL" | variant.type == "DUP" | variant.type == "LOF_HC")) {
     final.stats <- final.stats[get(gene.list) <= 3]
   }
   
   final.stats <- merge(final.stats,UKBB.phenotype.data,by.x="sample_id",by.y=id.name)
+  
+  ## Remove WES individuals from CNV analyses for meta-analysis purposes
+  if (remove.sequenced == T & (variant.type == "DEL" | variant.type == "DUP")) {
+    final.stats <- final.stats[has.wes == F]
+  }
   
   ## Remove missing y.var data
   final.stats <- final.stats[!is.na(get(y.var))]
@@ -1386,16 +1623,20 @@ run.regression <- function(maf,
   }
   
   ## Remove missing additional covar data
+  add.covars <- unlist(add.covars)
   for (cov in add.covars) {
     final.stats <- final.stats[!is.na(get(cov))]
   }
   
-  covariates <- c(gene.list,"PC1","PC2","PC3","PC4","PC5","PC6","PC7","PC8","PC9","PC10","agePulse.squared","agePulse","sexPulse",add.covars)
-  
-  cov.string <- paste(covariates, collapse=" + ")
-  formated.formula <- as.formula(paste(y.var, cov.string,sep=" ~ "))
-
-  covariates <- c(covariates,add.covars)
+  covariates <- c(gene.list,"agePulse.squared","agePulse","sexPulse",add.covars)
+  if (num.pcs == 30) {
+    covariates <- c(covariates,"PC1","PC2","PC3","PC4","PC5","PC6","PC7","PC8","PC9","PC10","PC11","PC12","PC13","PC14","PC15","PC16","PC17","PC18","PC19","PC20","PC21","PC22","PC23","PC24","PC25","PC26","PC27","PC28","PC29","PC30")
+  } else {
+    for (pc.num in c(1:num.pcs)) {
+      covariates <- c(covariates, paste0("PC",pc.num))
+    }
+  }
+    
   cov.string <- paste(covariates, collapse=" + ")
   formated.formula <- as.formula(paste(y.var, cov.string,sep=" ~ "))
   
@@ -1514,6 +1755,12 @@ plot.result(results.fertility,T,20,0,1.4, "# of Individuals\nWith sHET\n> 0.15")
 
 ### Additional Analyses
 
+Note: I also tested if removing any CNV that overlaps the MHC locus (~chr6:29000000-33000000) changes the effect size. It did not. I don't have it documented here as it requires me to retool the code base and did not observe any change in effect. Likely reasons"
+
+- Not many individuals have a rare variant that overlaps MHC (many have a variant but a lot are more common).
+- HLA genes don't really have high s~het~ scores.
+- Genes in this locus are more to do with the immune system. I believe our effect is going to be modulated more via neurodev/brain active genes.
+
 #### Linear Model Instead of Logistic
 
 This tests the relationship of s~het~ burden with actual number of children:
@@ -1551,7 +1798,20 @@ paste0("Number of PTV Individuals Lost, sHET ≥ 0.9 : ", results.fertility[vari
 
 ```
 
+#### Cassa et al. s~het~
 
+```{r cassa shet, fig.height=7, fig.width=8}
+
+results.fertility.cassa <- data.table(crossing(maf = c(0.001,0),
+                                               gene.list = c("product_sHET"),
+                                               y.var = c("children.fathered","live.births"),
+                                               variant.type = c("DEL","DUP","LOF_HC","SYN","MIS")))
+results.fertility.cassa[,sex:=if_else(y.var=="children.fathered",1,2)]
+
+results.fertility.cassa[,c("var.beta","var.stderr","var.p","n.var","n.indvs"):=run.regression(maf,gene.list,y.var,sex,variant.type,T,return.data = F),by=1:nrow(results.fertility.cassa)]
+
+plot.result(results.fertility.cassa,T,20,0,1.4, "# of Individuals\nWith Cassa sHET\n> 0.15")
+```
 
 #### Excluding Various Genes/Individuals
 
@@ -1583,6 +1843,53 @@ results.excl.male[,sex:=if_else(y.var=="children.fathered",1,2)]
 results.excl.male[,c("var.beta","var.stderr","var.p","n.var","n.indvs"):=run.regression(maf,gene.list,y.var,sex,variant.type,T,return.data = T),by=1:nrow(results.excl.male)]
 
 plot.result(results.excl.male,T,70,0,1.4,"# of Individuals\nWith sHET\n> 0.15")
+```
+
+##### Mouse Infertility Genes
+
+```{r Exclude Mouse Infertility Genes, fig.height=7, fig.width=8}
+
+results.excl.mouse <- data.table(crossing(maf = c(0.001,0),
+                                   gene.list = "product_sHET_no_mouse_infertility",
+                                   y.var = c("children.fathered","live.births"),
+                                   variant.type = c("DEL","DUP","LOF_HC","SYN","MIS"),
+                                   quant = 0.15))
+results.excl.mouse[,sex:=if_else(y.var=="children.fathered",1,2)]
+
+results.excl.mouse[,c("var.beta","var.stderr","var.p","n.var","n.indvs"):=run.regression(maf,gene.list,y.var,sex,variant.type,T,return.data = T),by=1:nrow(results.excl.mouse)]
+
+plot.result(results.excl.mouse,T,70,0,1.4,"# of Individuals\nWith sHET\n> 0.15")
+```
+
+##### Male Infertility Carriers
+
+```{r No Male Infertility Carriers, fig.height=7, fig.width=8}
+
+## Get individuals that carry a known pathogenic CNV
+ukbb.has.male.infertility <- unique(c(hes.data.long[icd.category == "N46", eid],first.incidence.data[grepl("N46",code), eid]))
+
+## Kind of have to do this in a weird way so that I don't have to change my function massively
+variant.counts.backup <- copy(variant.counts)
+variant.counts <- variant.counts[!sample_id %in% ukbb.has.male.infertility]
+
+results.fertility.no.male.infertility <- data.table(crossing(maf = c(0.001,0),
+                                                             gene.list = "product_sHET",
+                                                             y.var = c("children.fathered","live.births"),
+                                                             variant.type = c("DEL","DUP","LOF_HC","SYN","MIS")))
+
+results.fertility.no.male.infertility[,sex:=if_else(y.var=="children.fathered",1,2)]
+
+results.fertility.no.male.infertility[,c("var.beta","var.stderr","var.p","n.var","n.indvs"):=run.regression(maf,gene.list,y.var,sex,variant.type,T,return.data = T),by=1:nrow(results.fertility.no.male.infertility)]
+
+plot.result(results.fertility.no.male.infertility,T,20,0,1.4,"# of Individuals\nWith sHET\n> 0.15")
+
+## Restore the original file and delete the backup:
+variant.counts <- copy(variant.counts.backup)
+rm(variant.counts.backup)
+
+## Total number of individuals with Male Infertility Coding:
+paste0("# of Individuals with Male Infertility coding: ", length(ukbb.has.male.infertility))
+
 ```
 
 ##### Known Disease Genes
@@ -1772,6 +2079,117 @@ ggplot(res.age, aes(age, var.beta, colour=variant.type, shape = y.var, group = i
 rm(male, female, meta.analy.female, meta.analy.male, age.remove)
 ```
 
+#### PC Analysis
+
+##### Variance Explained
+
+```{r PCs}
+
+phenotypes <- UKBB.phenotype.data[,c("eid","PC1","PC2","PC3","PC4","PC5","PC6","PC7","PC8","PC9","PC10","PC11","PC12","PC13","PC14","PC15","PC16","PC17","PC18","PC19","PC20","PC21","PC22","PC23","PC24","PC25","PC26","PC27","PC28","PC29","PC30","agePulse.squared","agePulse","sexPulse","children.fathered","live.births")]
+phenotypes <- merge(variant.counts[type == "DEL" & allele.freq == 0 & !sample_id %in% samples.UKBB[,eid],c("sample_id","product_sHET")], phenotypes, by.x = "sample_id",by.y = "eid")
+
+phenotypes[,children:=if_else(sexPulse==1,children.fathered,live.births)]
+phenotypes <- phenotypes[!is.na(children)]
+phenotypes[,has.children:=if_else(children>0,1,0)]
+
+covariates <- c("product_sHET","agePulse.squared","agePulse")
+
+cov.string <- paste(covariates, collapse=" + ")
+formated.formula <- as.formula(paste("has.children", cov.string,sep=" ~ "))
+
+test.dt <- phenotypes[sexPulse == 1]
+
+test.lm.init <- glm(formated.formula, data=test.dt, family="binomial")
+coef.lm.init <- tidy(test.lm.init) %>% data.table()
+nag.init <- nagelkerke(test.lm.init)
+
+covariates <- c("product_sHET","agePulse.squared","agePulse","PC1","PC2","PC3","PC4","PC5","PC6","PC7","PC8","PC9","PC10","PC11","PC12","PC13","PC14","PC15","PC16","PC17","PC18","PC19","PC20","PC21","PC22","PC23","PC24","PC25","PC26","PC27","PC28","PC29","PC30")
+cov.string <- paste(covariates, collapse=" + ")
+formated.formula <- as.formula(paste("has.children", cov.string,sep=" ~ "))
+
+test.lm.pc30 <- glm(formated.formula, data=test.dt, family="binomial")
+coef.lm.pc30 <- tidy(test.lm.pc30) %>% data.table()
+nag.pc30 <- nagelkerke(test.lm.pc30, null = test.lm.init)
+
+covariates <- c("product_sHET","agePulse.squared","agePulse","PC1","PC2","PC3","PC4","PC5","PC6","PC7","PC8","PC9","PC10")
+cov.string <- paste(covariates, collapse=" + ")
+formated.formula <- as.formula(paste("has.children", cov.string,sep=" ~ "))
+
+test.lm.pc10 <- glm(formated.formula, data=test.dt, family="binomial")
+coef.lm.pc10 <- tidy(test.lm.pc10) %>% data.table()
+nag.pc10 <- nagelkerke(test.lm.pc10, null = test.lm.init)
+
+paste0("Null R2: ",nag.init$Pseudo.R.squared.for.model.vs.null[3]*100)
+paste0("10 PC R2: ", nag.pc10$Pseudo.R.squared.for.model.vs.null[3]*100)
+paste0("30 PC R2: ", nag.pc30$Pseudo.R.squared.for.model.vs.null[3]*100)
+
+pc.effects.table <- coef.lm.pc30[grepl("PC", term),c("term","estimate","std.error","p.value")]
+setnames(pc.effects.table, names(pc.effects.table), c("PC","var.beta", "var.stderr", "var.p"))
+
+pc.effects.table[,pc.num:=.I]
+pc.effects.table[,var.ci.upper:=exp(var.beta + (1.96*var.stderr))]
+pc.effects.table[,var.ci.lower:=exp(var.beta - (1.96*var.stderr))]
+pc.effects.table[,sig.pos:=if_else(var.beta<0,var.ci.lower-0.1,var.ci.upper+0.1)]
+pc.effects.table[,var.beta:=exp(var.beta)]
+
+
+
+```
+
+##### Separate PCs
+
+*Note*: Remember, this doesn't work with the function `run.regression` as currently written. Will need to adjust that function or write new one when publishing.
+
+```{r All PCs}
+
+add.pcs <- c("PC10","PC11","PC12","PC13","PC14","PC15","PC16","PC17","PC18","PC19","PC20","PC21","PC22","PC23","PC24","PC25","PC26","PC27","PC28","PC29","PC30")
+
+add.co <- list()
+for (i in 1:21) {
+  add.co[[i]] <- c(add.pcs[1:i])
+}
+
+results.pcs <- data.table(crossing(maf = 0,
+                                   gene.list = "product_sHET",
+                                   y.var = "children.fathered",
+                                   variant.type = c("DEL","LOF_HC"),
+                                   sex = 1,
+                                   add.covars = add.co))
+results.pcs[,num.pcs:=9+length(unlist(add.covars)),by=1:nrow(results.pcs)]
+
+results.pcs[,c("var.beta","var.stderr","var.p","n.var","n.indvs"):=run.regression(maf,gene.list,y.var,sex,variant.type,T,return.data = F,add.covars = add.covars, num.pcs = num.pcs),by=1:nrow(results.pcs)]
+
+get.pc.meta.val <- function(n) {
+  
+  meta.table <- results.pcs[num.pcs == n]
+  
+  meta.analy.var <- metagen(var.beta,
+                            var.stderr,
+                            studlab = variant.type,
+                            method.tau = "SJ",
+                            sm = "OR",
+                            data = meta.table)
+  
+  return(list(meta.analy.var$TE.fixed,
+              meta.analy.var$seTE.fixed,
+              meta.analy.var$pval.fixed
+              ))
+  
+}
+
+results.pcs.meta <- unique(results.pcs[,c("maf","gene.list","y.var","sex","num.pcs")])
+results.pcs.meta[,c("var.beta","var.stderr","var.p"):=get.pc.meta.val(num.pcs),by=1:nrow(results.pcs.meta)]
+results.pcs.meta[,PCs:=paste0("..PC",.I+9)]
+results.pcs.meta[,PCs:=if_else(PCs == "..PC10","PC1..PC10",PCs)]
+
+results.pcs.meta[,log.p:=-1*log(var.p,10)]
+results.pcs.meta[,var.ci.upper:=exp(var.beta + (1.96*var.stderr))]
+results.pcs.meta[,var.ci.lower:=exp(var.beta - (1.96*var.stderr))]
+results.pcs.meta[,sig.pos:=if_else(var.beta<0,var.ci.lower-0.1,var.ci.upper+0.1)]
+results.pcs.meta[,var.beta:=exp(var.beta)]
+```
+
+
 ## 5D. Partner at Home
 
 ### Main Regression
@@ -1831,9 +2249,9 @@ Here attempting to replicate the result from [Power et al](https://jamanetwork.c
 
 ```{r Fertility Ratios, fig.height=8, fig.width=10}
 
-fertility.ratios <- data.table(crossing(phenotype=gsub("icd.","",names(UKBB.phenotype.data)[grep("icd",names(UKBB.phenotype.data))]),
+fertility.ratios <- data.table(crossing(phenotype=gsub("hes.","",names(UKBB.phenotype.data)[grep("hes",names(UKBB.phenotype.data))]),
                                         sex=c(1,2),
-                                        data.source=c("mhq","icd")))
+                                        data.source=c("mhq","hes")))
 
 calc.mean.fertility <- function(sex, phenotype, data.source) {
   
@@ -1904,7 +2322,7 @@ mhq <- ggplot(test[data.source=="mhq"],aes(phenotype,ratio,group=sex,colour=sex)
   ggtitle("MHQ") +
   coord_flip()
 
-icd <- ggplot(test[data.source=="icd" & (phenotype == "scizo" | phenotype == "asd" | phenotype == "bipolar" | phenotype == "depression" | phenotype == "eating_disorders" | phenotype == "substance")],aes(phenotype,ratio,group=sex, colour=sex)) +
+icd <- ggplot(test[data.source=="hes" & (phenotype == "scizo" | phenotype == "asd" | phenotype == "bipolar" | phenotype == "depression" | phenotype == "eating_disorders" | phenotype == "substance")],aes(phenotype,ratio,group=sex, colour=sex)) +
   geom_point(position = position_dodge(width=0.5)) +
   geom_errorbar(aes(ymin=ci.lower,ymax=ci.upper),position=position_dodge(width=0.5),width=0.1) +
   ylim(0,1.4) +
@@ -1913,8 +2331,8 @@ icd <- ggplot(test[data.source=="icd" & (phenotype == "scizo" | phenotype == "as
   geom_point(aes(y=ci.lower,shape=ci.lower.symbol,fill=sex),position=position_dodge(width=0.5)) +
   geom_point(aes(y=ci.upper,shape=ci.upper.symbol,fill=sex),position=position_dodge(width=0.5)) +
   scale_shape_identity() +
-  ggtitle("ICD10") +
-  # coord_flip() +
+  ggtitle("HES") +
+  coord_flip() +
   scale_x_discrete(name = "")
   # theme(axis.text.y=element_blank())
 
@@ -1937,8 +2355,8 @@ For the purposes of this manuscript, we have gone for the former, although both 
 
 ```{r MHQ regression, fig.height=7, fig.width=8}
 
-## Calculate the two binaries listed above:
-UKBB.phenotype.data[,ganna.binary:=if_else(icd.scizo == 1 | icd.bipolar == 1 | icd.asd == 1 | icd.add == 1, 1, 0)]
+## Calculate the 'Ganna' binary listed above:
+UKBB.phenotype.data[,ganna.binary:=if_else(hes.scizo == 1 | hes.bipolar == 1 | hes.asd == 1 | hes.add == 1, 1, 0)]
 
 results.mhq <- data.table(crossing(maf = c(0.001,0),
                                   gene.list = "product_sHET",
@@ -1961,7 +2379,7 @@ See if we just remove MH patients from our model, do we still have an effect?
 
 ```{r Remove MH Patients, fig.height=7, fig.width=8}
 
-mht.remove <- UKBB.phenotype.data[mhq.scizo == 1 | mhq.bipolar == 1 | mhq.asd == 1 | mhq.add == 1 | icd.scizo == 1 | icd.bipolar == 1 | icd.asd == 1 | icd.add == 1,eid]
+mht.remove <- UKBB.phenotype.data[mhq.scizo == 1 | mhq.bipolar == 1 | mhq.asd == 1 | mhq.add == 1 | hes.scizo == 1 | hes.bipolar == 1 | hes.asd == 1 | hes.add == 1 | fi.scizo == 1 | fi.bipolar == 1 | fi.asd  ==  1 | fi.add == 1,eid]
 
 ## Kind of have to do this in a weird way so that I don't have to change my function massively
 variant.counts.backup <- copy(variant.counts)
@@ -2013,6 +2431,237 @@ results.email[,c("var.beta","var.stderr","var.p","n.var","n.indvs"):=run.regress
 plot.result(results.email,T,20,0,1.4,"# of Individuals\nWith sHET\n> 0.15")
 ```
 
+### Association of ICD10 coding with childlessness
+
+#### Loading the ICD-10 Tree
+
+This code snippet just loads in the icd10 tree so we can build labels on our data.tables and figures.
+
+```{r load icd10 tree}
+
+## Load the ICD-10 tree
+icd.codes <- fread("rawdata/phewas/icd10_tree.tsv")
+
+## Factorize chapters for plotting
+chapters <- c("I","II","III","IV","V","VI","VII","VIII","IX","X","XI","XII","XIII","XIV","XV","XVI","XVII","XVIII","XIX","XX","XXI","XXII")
+chapters <- paste("Chapter", chapters, sep = " ")
+chapters.table <- data.table(chapter=chapters)
+chapters.table[,chapter:=factor(chapter,levels=chapters)]
+chapters.table <- merge(chapters.table,icd.codes[grepl("Chapter",coding),c("coding","meaning")],by.x="chapter",by.y="coding")
+chapters.table[,meaning:=str_remove(meaning,"Chapter\\s[XVI]*\\s")]
+chapters.table[,meaning:=str_wrap(meaning,width=40)]
+chapters.table[,meaning:=paste(chapter,meaning,sep=":\n")]
+chapters.table[,rn:=str_remove(chapter,"Chapter ")]
+
+```
+
+#### Running Logistic Models
+
+Going to just try a (relatively) naive approach at the moment based on the logic of [TreeWAS](https://www.nature.com/articles/ng.3926). This just means that not only do we test lower codes (like A00), but we also test groups of related codes (like A00-A09) and entire chapters (like Chapter I). For Hospital Episode Statistic (HES) data, we also test more specific codes (like A00.1) since that data has that granularity. For First Incidence (FI), they limited to the disease level (i.e. A00), so we just test at that level. In short, we are just running the model:
+
+$$ has.children \sim s_{het[i,v]} + has.icd.code + age + age^2 + PC1..PC10 $$
+
+Due to the necessity to separately test 19,194 separate codings/coding blocks, this method is split into three parts to allow for parallelization: 
+
+1. Writing the input files
+2. Running the actual jobs (with the script `./scripts/run_logistic_model.R`)
+    + This script runs the primary logistic model defined above, as well as meta-analyses combined PTV and DEL results.
+3. Reading back in and getting final tables for analysis.
+
+##### Preparing Input Data
+
+```{r PhewasModel, fig.height=6, fig.width=8}
+
+## Save variants and Phenotype data that is the same for all data:
+saveRDS(UKBB.phenotype.data, "rawdata/phewas/UKBB.phenotype.rdat")
+saveRDS(variant.counts, "rawdata/phewas/variant_counts.rdat")
+
+## Make HES Table:
+# Convert individual level ICD data into format for TreeWAS-esque logit model:
+disease.table <- hes.data.long[,c("eid","icd.code")]
+# Add a dummy variable for age that will always be included so that we don't need two scripts for HES and FI codes.
+disease.table[,age.at.incidence:=0]
+saveRDS(disease.table,"rawdata/phewas/samples.hes.rdat")
+
+## Make FI Table:
+# Convert individual level ICD data into format for TreeWAS/logit model:
+# Has to be a TSV here since that's what TreeWAS requires
+disease.table <- first.incidence.data[,c("eid","code","age.at.incidence")]
+setnames(disease.table,"code","icd.code")
+saveRDS(disease.table,"rawdata/phewas/samples.fi.rdat")
+
+```
+
+##### Running Model Scripts
+
+These are simply given as an exmaple of how these were run on the Sanger LSF cluster and are not intended to be run here. 
+
+```{bash Run logit PheWAS, eval = F}
+
+## HES Models:
+bsub -q normal -M 2000 -o gridout/logistic.%J.%I -J 'LOG[1-19154]%500' './run_logistic_model.R rawdata/phewas/samples.hes.rdat 0 100 FALSE outfiles/'
+cat outfiles/glm.*.out > glm.out
+
+## FI Models:
+bsub -q normal -M 2000 -o gridout_fi/logistic.%J.%I -J 'LOGFI[1-19154]%500' './run_logistic_model.R rawdata/phewas/samples.fi.rdat 0 100 TRUE outfiles_fi/'
+cat outfiles_fi/glm.*.out > glm.fi.out
+
+## And a model only incorperating disorders identified among young individuals via FI data:
+bsub -q normal -M 2000 -o gridout_fi/logistic.%J.%I -J 'LOGFI[1-19154]%500' './run_logistic_model.R rawdata/phewas/samples.fi.rdat 0 20 TRUE outfiles_fi_young/'
+cat outfiles_fi_young/glm.*.out > glm.fi_young.out
+```
+
+##### Loading Data
+
+```{r icd}
+
+build.ICD.table <- function(file) {
+ 
+  data <- fread(file)
+
+  setnames(data,names(data),c("coding","meaning","node_id","sex","variant.type","var.est","var.err","var.p","icd.est","icd.err","icd.p","N","N.cases","chapter","level"))
+  
+  data[,chapter:=factor(chapter,levels=chapters.table[,chapter],labels = chapters.table[,rn])]
+  
+  data[,var.err.upper:=exp(var.est + (1.96*var.err))]
+  data[,var.err.lower:=exp(var.est - (1.96*var.err))]
+  data[,var.or:=exp(var.est)]
+  
+  data[,icd.err.upper:=exp(icd.est + (1.96*icd.err))]
+  data[,icd.err.lower:=exp(icd.est - (1.96*icd.err))]
+  data[,icd.or:=exp(icd.est)]
+  
+  data[,var.p.log:=-1*log(var.p,10)]
+  data[,icd.p.log:=-1*log(icd.p,10)]
+  
+  data[,meaning:=str_wrap(meaning,width=60)]
+  
+  ## This just adds a +/- value for which direction the OR is for plotting later
+  data[,factor:=if_else(icd.est>0, 1, -1)]
+  
+  return(data)
+   
+}
+
+## Load completed LMs
+hes.analysis.table <- build.ICD.table("rawdata/phewas/glm.out")
+fi.analysis.table <- build.ICD.table("rawdata/phewas/glm.fi.out")
+fi.young.analysis.table <- build.ICD.table("rawdata/phewas/glm.fi_young.out")
+
+```
+
+#### Comparing Data Sources
+
+```{r Comparing HES and FI data}
+
+test <- merge(fi.analysis.table[level == 3 & variant.type == "META",c("coding","meaning","sex","chapter","var.p.log","icd.p.log")], hes.analysis.table[level == 3 & variant.type == "META",c("coding","meaning","sex","var.p.log","icd.p.log")], by = c("coding","sex","meaning"), suffixes = c(".fi",".hes"))
+
+test <- merge(test,fi.young.analysis.table[level == 3 & variant.type == "META",c("coding","meaning","sex","var.p.log","icd.p.log")],by = c("coding","sex","meaning"))
+setnames(test,c("var.p.log","icd.p.log"),c("var.p.log.fiyoung","icd.p.log.fiyoung"))
+
+ggplot(test[sex == "MALE" & !is.na(var.p.log.fi)], aes(var.p.log.fi,var.p.log.hes,colour=chapter)) + 
+  geom_point(size = 0.5) + 
+  xlab("FI -log10 p.value") +
+  ylab("HES -log10 p.value") +
+  geom_text(data = test[sex == "MALE" & !is.na(var.p.log.fi) & var.p.log.fi < 8.1 & var.p.log.hes < 14], aes(label = meaning),size=2) +
+  theme.legend
+ggplot(test[sex == "MALE" & !is.na(var.p.log.fi)], aes(icd.p.log.fi,icd.p.log.hes,colour=chapter)) + 
+  geom_point(size = 0.5) + 
+  xlab("FI -log10 p.value") +
+  ylab("HES -log10 p.value") +
+  geom_text(data = test[sex == "MALE" & !is.na(var.p.log.fi) & icd.p.log.fi > 12], aes(label = meaning),size=2) +
+  theme.legend
+
+ggplot(test[sex == "MALE" & !is.na(var.p.log.fi)], aes(var.p.log.fi,var.p.log.fiyoung,colour=chapter)) + 
+  geom_point(size = 0.5) + 
+  xlab("FI -log10 p.value") +
+  ylab("FI-Young -log10 p.value") +
+  geom_text(data = test[sex == "MALE" & !is.na(var.p.log.fi) & var.p.log.fi < 8.1 & var.p.log.hes < 14], aes(label = meaning),size=2) +
+  theme.legend
+ggplot(test[sex == "MALE" & !is.na(var.p.log.fi)], aes(icd.p.log.fi,icd.p.log.fiyoung,colour=chapter)) + 
+  geom_point(size = 0.5) + 
+  xlab("FI -log10 p.value") +
+  ylab("FI-Young -log10 p.value") +
+  geom_text(data = test[sex == "MALE" & !is.na(var.p.log.fi) & (icd.p.log.fi > 12 | icd.p.log.fiyoung > 7)], aes(label = meaning),size=2) +
+  theme.legend
+
+ggplot(test[sex == "MALE" & !is.na(var.p.log.fi)], aes(var.p.log.fiyoung,var.p.log.hes,colour=chapter)) + 
+  geom_point(size = 0.5) + 
+  xlab("FI-Young -log10 p.value") +
+  ylab("HES -log10 p.value") +
+  geom_text(data = test[sex == "MALE" & !is.na(var.p.log.fi) & var.p.log.fiyoung < 8.1 & var.p.log.hes < 14], aes(label = meaning),size=2) +
+  theme.legend
+ggplot(test[sex == "MALE" & !is.na(var.p.log.fi)], aes(icd.p.log.fiyoung,icd.p.log.hes,colour=chapter)) + 
+  geom_point(size = 0.5) + 
+  xlab("FI-Young -log10 p.value") +
+  ylab("HES -log10 p.value") +
+  geom_text(data = test[sex == "MALE" & !is.na(var.p.log.fi) & (icd.p.log.fi > 12 | icd.p.log.fiyoung > 7)], aes(label = meaning),size=2) +
+  theme.legend
+```
+
+#### Male Infertility Codes
+
+```{r Male Infertility Codes, fig.height=5, fig.width=10}
+
+columns <- c("coding","variant.type","var.or","var.err.lower","var.err.upper","var.p","icd.or","icd.err.lower","icd.err.upper","icd.p","N")
+
+male.codings.fi <- fi.analysis.table[coding=="N46" & sex == "MALE",..columns]
+male.codings.fi[,data:="FI"]
+
+male.codings.icd <- hes.analysis.table[coding=="N46" & sex == "MALE",..columns]
+male.codings.icd[,data:="ICD"]
+
+male.codings <- rbind(male.codings.fi, male.codings.icd)
+
+male.ors.plot <- ggplot(male.codings, aes(variant.type, icd.or, group = data, linetype = data)) +
+  scale_x_discrete(name = "") +
+  scale_y_continuous(name = "OR for the Impact of Having a\nMale Infertility Code (N46) on Childlessness") +
+  geom_hline(yintercept = 1, colour = "red", linetype = 2) +
+  geom_point(position = position_dodge(0.5), colour = sex.colours["Male"], size = 3) +
+  geom_errorbar(aes(ymin = icd.err.lower, ymax = icd.err.upper),position = position_dodge(0.5), width = 0, colour = sex.colours["Male"], size = 1) +
+  scale_linetype_discrete(guide=guide_legend(title="Data Source")) +
+  coord_flip() + 
+  theme.legend + theme(panel.grid.major.y=element_blank())
+  
+male.counts.plot <- ggplot(male.codings, aes(variant.type, N, group = data, linetype = data)) +
+  scale_x_discrete(name = "") +
+  scale_y_continuous(name = "# of Partic.") +
+  geom_col(fill = sex.colours["Male"],position = position_dodge(0.5),width=0.5,size=1, colour = "black") +
+  coord_flip() +
+  scale_linetype_discrete(guide=guide_legend(title="Data Source")) +
+  theme.legend + theme(panel.grid.major.y = element_blank(), axis.text.y = element_blank())
+  
+male.ors.plot + male.counts.plot + plot_layout(ncol = 2, widths = c(3,1), guides = 'collect')
+
+```
+
+#### Fertility for Only FI Individuals
+
+Check to see if just using individuals with FI data (~50% of all UKB Participants) affects the affect size of our primary model of $ has.children \sim s_{het[i,v]} $.
+
+```{r FI Only, fig.height=7, fig.width=8}
+ukbb.FI.individuals <- UKBB.phenotype.data[has.first.incidence.data==T, eid]
+
+## Kind of have to do this in a weird way so that I don't have to change my function massively
+variant.counts.backup <- copy(variant.counts)
+variant.counts <- variant.counts[sample_id %in% ukbb.FI.individuals]
+
+results.fertility.FI.only <- data.table(crossing(maf = c(0.001,0),
+                                                 gene.list = "product_sHET",
+                                                 y.var = c("children.fathered","live.births"),
+                                                 variant.type = c("DEL","DUP","LOF_HC","SYN","MIS")))
+
+results.fertility.FI.only[,sex:=if_else(y.var=="children.fathered",1,2)]
+
+results.fertility.FI.only[,c("var.beta","var.stderr","var.p","n.var","n.indvs"):=run.regression(maf,gene.list,y.var,sex,variant.type,T,return.data = T),by=1:nrow(results.fertility.FI.only)]
+
+plot.result(results.fertility.FI.only,T,20,0,1.4,"# of Individuals\nWith sHET\n> 0.15")
+
+## Restore the original file and delete the backup:
+variant.counts <- copy(variant.counts.backup)
+rm(variant.counts.backup)
+```
+
 ## 5H. Household Income
 
 ### Main Regression
@@ -2048,6 +2697,69 @@ results.same.sex <- data.table(crossing(maf = c(0.001,0),
 results.same.sex[,c("var.beta","var.stderr","var.p","n.var","n.indvs"):=run.regression(maf,gene.list,y.var,sex,variant.type,T),by=1:nrow(results.same.sex)]
 
 plot.result(results.same.sex,T,20,0,1.4,"# of Individuals\nWith sHET\n> 0.15")
+```
+
+### Exclude
+
+```{r Exclude same sex behaviour individuals}
+
+ubb.same.sex <- unique(UKBB.phenotype.data[same.sex == 1, eid])
+
+## Kind of have to do this in a weird way so that I don't have to change my function massively
+variant.counts.backup <- copy(variant.counts)
+variant.counts <- variant.counts[!sample_id %in% ubb.same.sex]
+
+results.fertility.no.same.sex <- data.table(crossing(maf = c(0.001,0),
+                                                     gene.list = "product_sHET",
+                                                     y.var = c("children.fathered","live.births"),
+                                                     variant.type = c("DEL","DUP","LOF_HC","SYN","MIS")))
+
+results.fertility.no.same.sex[,sex:=if_else(y.var=="children.fathered",1,2)]
+
+results.fertility.no.same.sex[,c("var.beta","var.stderr","var.p","n.var","n.indvs"):=run.regression(maf,gene.list,y.var,sex,variant.type,T,return.data = T),by=1:nrow(results.fertility.no.same.sex)]
+
+plot.result(results.fertility.no.same.sex,T,20,0,1.4,"# of Individuals\nWith sHET\n> 0.15")
+
+## Restore the original file and delete the backup:
+variant.counts <- copy(variant.counts.backup)
+rm(variant.counts.backup)
+
+```
+
+## 5J. Neutral Phenotypes
+
+```{r Neutral Phenotypes, fig.height =7, fig.width=8}
+
+results.fruit <- data.table(crossing(maf = c(0.001,0),
+                                     gene.list = "product_sHET",
+                                     y.var = c("fresh.fruit"),
+                                     sex = c(1,2),
+                                     variant.type = c("DEL","DUP","LOF_HC","SYN","MIS")))
+
+results.fruit[,c("var.beta","var.stderr","var.p","n.var","n.indvs"):=run.regression(maf,gene.list,y.var,sex,variant.type,F),by=1:nrow(results.fruit)]
+
+plot.result(results.fruit,F,20,-1,1, "# of Individuals\nWith sHET\n> 0.15")
+
+results.handedness <- data.table(crossing(maf = c(0.001,0),
+                                          gene.list = "product_sHET",
+                                          y.var = c("handedness"),
+                                          sex = c(1,2),
+                                          variant.type = c("DEL","DUP","LOF_HC","SYN","MIS")))
+
+results.handedness[,c("var.beta","var.stderr","var.p","n.var","n.indvs"):=run.regression(maf,gene.list,y.var,sex,variant.type,T),by=1:nrow(results.handedness)]
+
+plot.result(results.handedness,T,20,0,1.4,"# of Individuals\nWith sHET\n> 0.15")
+
+results.hair <- data.table(crossing(maf = c(0.001,0),
+                                          gene.list = "product_sHET",
+                                          y.var = c("is.blonde"),
+                                          sex = c(1,2),
+                                          variant.type = c("DEL","DUP","LOF_HC","SYN","MIS")))
+
+results.hair[,c("var.beta","var.stderr","var.p","n.var","n.indvs"):=run.regression(maf,gene.list,y.var,sex,variant.type,T),by=1:nrow(results.hair)]
+
+plot.result(results.hair,T,20,0,1.4,"# of Individuals\nWith sHET\n> 0.15")
+
 ```
 
 # 6. Modulation of Traits by Variant Burden
@@ -2183,7 +2895,7 @@ for (s in c(1,2)) {
                         sm = "OR",
                         data = results.fertility[sex == s & maf == 0 & (variant.type == "DEL" | variant.type == "LOF_HC")])
   
-  ## Get actual proportion of individuals without a partner from 
+  ## Get actual proportion of individuals without a child 
   ## our data generated above
   if (s == 1) {
     stat <- "children.fathered"
@@ -2216,18 +2928,11 @@ for (s in c(1,2)) {
       
       ## Get proportion of individuals that are childless based off the OR
       prop.shet <- calc.prop.indvs(or, aff)
-      
-      ## Simulate 100k 'individuals' with childlessness randomized by our calculated proportion above
-      sim.indv <- data.table(id = c(1:100000),shet=modifier, sex = s)
-      sim.indv[,children.binary:=simulate.proportion(prop.shet),by=1:nrow(sim.indv)]
-      
-      ## Assign number of children based off of expected base fertilities
-      ## We know that individuals w/o children are 0 and individuals with children do
-      ## not deviate from the population mean (see subsection in Fertility - Only Individuals With >0 Children)
-      sim.indv[,num.children:=if_else(children.binary==1,
-                                if_else(sex == 1,
-                                        base.fertilities[sex == 1 & inc.zero == F, fertility],
-                                        base.fertilities[sex == 2 & inc.zero == F, fertility]),0)]
+      # This works because we know that individuals w/o children are 0 and individuals with children do
+      # not deviate from the population mean (see subsection in Fertility - Only Individuals With >0 Children)
+      # So we obviously don't have to do (prop.shet * 0) + (1-prop.shet * base.fertility) since 0 * anything == 0 
+      # (duh... but here since my brain forgot that for a second and got nervous that I did something wrong) 
+      mean.children <- (1 - prop.shet) * base.fertilities[inc.zero == F & sex == s, fertility]
       
       ## Grab a mean fertility value to calculate a fertility ratio from
       if (s == 1) {
@@ -2240,9 +2945,9 @@ for (s in c(1,2)) {
                                    data.table(shet = modifier, 
                                               sex = s, 
                                               error = place, 
-                                              mean.childlessness = sim.indv[,mean(children.binary)],
-                                              mean.children = sim.indv[,mean(num.children)], 
-                                              ratio = sim.indv[,mean(num.children)] / to.use.ratio))
+                                              mean.childlessness = 1 - prop.shet,
+                                              mean.children = mean.children, 
+                                              ratio = mean.children / to.use.ratio))
     
     }
   
@@ -2273,18 +2978,6 @@ Partner at Home and Educational Attainment use a similar methodology to get esti
 
 ## Helper function to generate a given trait and age for a 'simulated' 
 ## individual given a probability of having that trait. 
-
-simulate.scores <- function(prob) {
-        
-  age <- sample(ages, 1)
-  
-  ## I do the inverse here because that's what the simulate.proportion function expects
-  has.trait <- simulate.proportion(prob)
-  
-  return(list(age, has.trait))
-  
-}
-
 calc.childlessness <- function(glm.result, y.var.result, y.var) {
   
   ## Datatable for return:
@@ -2300,14 +2993,8 @@ calc.childlessness <- function(glm.result, y.var.result, y.var) {
                           sm = "OR",
                           data = glm.result[sex == s & maf == 0 & (variant.type == "DEL" | variant.type == "LOF_HC")])
     
-    ## Get actual proportion of individuals without a partner from our data generated above
-    if (s == 1) {
-      stat <- "children.fathered"
-      prop.affected <- base.childlessness.male
-    } else {
-      stat <- "live.births"
-      prop.affected <- base.childlessness.female
-    }
+    ## Get actual proportion of individuals without 'y.var' from our data generated above
+    prop.affected <- 1 - mean(UKBB.phenotype.data[sexPulse == s & !is.na(get(y.var)), get(y.var)])
     
     ## This is just a constant denominator when calculating expected 
     ## childlessness via the function calc.prop.indvs()
@@ -2334,34 +3021,29 @@ calc.childlessness <- function(glm.result, y.var.result, y.var) {
         ## Determine expected proportions at various shet values based on meta-analysis OR
         prop.shet <- calc.prop.indvs(or, aff)
         model.sim <- data.table(val = prop.shet, shet = modifier, sex = s, error = place)
-      
+        
         ## Determine the increased proportion of individuals without children due to shet
-        sim.indv <- data.table(id = c(1:100000),shet=modifier, sex = s)
-        
-        ## I HAVE NO IDEA why I have to use as.character here. Something broken in data.table
-        sim.indv[,c("agePulse",eval(y.var)):=simulate.scores(prop.shet),by=1:nrow(sim.indv)]
-        sim.indv[,agePulse.squared:=agePulse^2]
-        
-        ## This pulls in the model from the "Linear Model" section for each trait and uses
-        ## it to predict childlessness given our simulations.
+        # This creates a fake table that we can use to pull the probabilities out from the GLM of has.child ~ y.var
+        # We use the median age for UKBB participants
+        prob.table <- data.table(id = c(1:2), shet=modifier, sex = s, agePulse = mean(UKBB.phenotype.data[sexPulse == s, agePulse]), var = c(0,1))
+        prob.table[,agePulse.squared:=agePulse^2]
+        setnames(prob.table,"var",y.var)
         var.model <- y.var.result[sex == s, model][[1]]
-        sim.indv[,prob.child:=predict(var.model, sim.indv,type="response")]
+        prob.table[,prob.child:=predict(var.model, prob.table,type="response")]
         
-        ## Simulate an individuals 'childlessness' from our expected probability
-        sim.indv[,children.binary:=simulate.proportion(1-prob.child),by=1:nrow(sim.indv)]
+        ## So now that we have the proportion of individuals for the y.var and childlessness for those proportions,
+        ## We can calculate our fertility by adding together the individuals who have children from each category:
+        mean.have.children <- ((prop.shet * prob.table[get(y.var) == 0, prob.child]) + ((1-prop.shet) * prob.table[get(y.var) == 1, prob.child]))
+        mean.children <- mean.have.children * base.fertilities[inc.zero == F & sex == s, fertility]
+        ## For the above, we know that individuals w/o children are 0 and individuals with children do
+        ## not deviate from the population mean (see subsection in Fertility - Only Individuals With >0 Children),
+        ## So we can just use fertility of those with children.
         
-        ## Assign number of children based off of expected base fertilities
-        ## We know that individuals w/o children are 0 and individuals with children do
-        ## not deviate from the population mean (see subsection in Fertility - Only Individuals With >0 Children)
-        sim.indv[,num.children:=if_else(children.binary==1,
-                                        if_else(sex == 1,
-                                                base.fertilities[sex == 1 & inc.zero == F, fertility],
-                                                base.fertilities[sex == 2 & inc.zero == F, fertility]),0)]
-        
-        model.sim[,mean.childlessness:=1-sim.indv[,mean(children.binary)]]
-        model.sim[,mean.children:=sim.indv[,mean(num.children)]]
+        model.sim[,mean.childlessness:=1-mean.have.children]
+        model.sim[,mean.children:=mean.children]
         model.sim[,ratio:=mean.children/base.fertilities[sex == s & inc.zero == T, fertility]]
         model <- rbind(model, model.sim)
+        
       }
       
     }
@@ -2428,6 +3110,7 @@ This code uses the function from [above](#6d._function_to_calculate_increased_ch
 
 ```{r Partner Childlessness}
 
+## Datatable for return:
 model.partner <- calc.childlessness(results.partner, sex.diff.partner, "partner.in.house")
 model.partner[,sexPulse:=factor(sex,levels=c(1,2),labels=c("Male","Female"))]
 setnames(model.partner, "val", "expected.without.partner")
@@ -2442,9 +3125,10 @@ model.partner <- data.table(pivot_wider(model.partner,
 paste0("Contribution of Partner at Home to Fitness: ",
        sprintf("%0.1f",(((1 - model.partner[shet == 1 & sex == 1,ratio_mid]) / (1 - model.fertility[shet == 1 & sex == 1,ratio_mid]))*100)),
        "% (",
-       sprintf("%0.1f",(((1 - model.partner[shet == 1 & sex == 1,ratio_upper]) / (1 - model.fertility[shet == 1 & sex == 1,ratio_upper]))*100)),
-       " - ",
        sprintf("%0.1f",(((1 - model.partner[shet == 1 & sex == 1,ratio_lower]) / (1 - model.fertility[shet == 1 & sex == 1,ratio_lower]))*100)),
+       " - ",
+       sprintf("%0.1f",(((1 - model.partner[shet == 1 & sex == 1,ratio_upper]) / (1 - model.fertility[shet == 1 & sex == 1,ratio_upper]))*100)),
+       
        "%)")
 ```
 
@@ -2498,7 +3182,7 @@ mean.plot <- ggplot(means,aes(as.factor(completed.college),mean,group=sexPulse,c
 
 ### Effect on Childlessness
 
-This code uses the function from [above](#6d._function_to_calculate_increased_childlessness_due_to_partner_at_home/ea). See that code for how this section works.
+This code uses the function from [above](#6d._function_to_calculate_increased_childlessness_due_to_partner_at_home/ea). See that code for how this section works. Note that this calculation is not included in the main text but is performed here for sake of completion/supplementary data.
 
 ```{r EA Childlessness}
 
@@ -2926,7 +3610,7 @@ calc.prop.indvs.mhq <- function(odds.ratio, healthy.ratio) {
 }
 
 ## Datatable for return:
-simulated.data <- data.table()
+mh.affected <- data.table()
 
 for (s in c(1,2)) {
 
@@ -2938,7 +3622,7 @@ for (s in c(1,2)) {
     ## be used to get expected proportion of childlessness
     for (place in c("mid","lower","upper")) {
     
-      sim <- data.table(indv=c(1:100000))
+      disorder.table <- data.table()
       
       for (disorder in unique(modeling[,trait])) {
         
@@ -2957,74 +3641,45 @@ for (s in c(1,2)) {
         
         healthy.ratio <- modeling[trait == disorder & sex == s,healthy.ratio]
         children.affected <- modeling[trait == disorder & sex == s,ratio] * base.fertilities[sex == s & inc.zero == T, fertility]
-        children.unaffected <- base.fertilities[sex == s & inc.zero == T, fertility]
         
         prop.shet <- calc.prop.indvs.mhq(or,healthy.ratio)
       
-        val <- paste0("has.",disorder)
-        sim[,eval(val):=simulate.proportion(1-prop.shet),by=1:nrow(sim)]
-        
-        sim[,eval(val):=if_else(get(val)==0,children.unaffected,children.affected)]
+        disorder.table <- bind_rows(disorder.table,
+                                    data.table(prop.affected = prop.shet,
+                                               children.affected = children.affected,
+                                               error = place,
+                                               trait = disorder))
         
       }
       
-      sim[,children:=min(has.asd,has.scizo,has.bipolar),by=1:nrow(sim)]
-      sim[,shet:=shet]
-      sim[,sex:=s]
-      sim[,error:=place]
-      
-      simulated.data <- bind_rows(simulated.data, sim)
+      prop.affected.total <- disorder.table[,sum(prop.affected)]
+      children.unaffected <- base.fertilities[sex == s & inc.zero == T, fertility]
+      mean.children <- sum(disorder.table[1:3, prop.affected * children.affected]) + (children.unaffected * (1 - prop.affected.total))
+      mh.affected <- bind_rows(mh.affected,
+                               data.table(shet = shet, sex = s, error = place, mean.children = mean.children, 
+                                          mean.has.disorder = prop.affected.total,
+                                          inc.scizo=disorder.table[trait=="scizo", prop.affected],
+                                          inc.asd=disorder.table[trait=="asd", prop.affected],
+                                          inc.bipolar = disorder.table[trait=="bipolar", prop.affected]))
       
     }
   }
 }
 
-## This is a hack to convert the fertility for each trait (which is always below 1.7) into a binary does/does nothave trait
-simulated.data[,has.disorder:=if_else(has.asd < 1.7 | has.scizo < 1.7 | has.bipolar < 1.7, 1, 0)]
-
-## And then tabulate the actual proportion of individuals with _any_ disorder
-means <- simulated.data[,list(mean(children),mean(has.disorder)),by=c("shet","sex","error")]
-setnames(means, c("V1","V2"),c("mean.children","mean.has.disorder"))
-
-## And then calculate a fertility ratio for each trait.
-means[,ratio:=if_else(sex == 1,
-                      mean.children/base.fertilities[sex==1 & inc.zero == T, fertility],
-                      mean.children/base.fertilities[sex==2 & inc.zero == T, fertility])]
+## Calculate a fertility ratio for each trait.
+mh.affected[,ratio:=if_else(sex == 1,
+                            mean.children/base.fertilities[sex==1 & inc.zero == T, fertility],
+                            mean.children/base.fertilities[sex==2 & inc.zero == T, fertility])]
 
 ## And generate the final model data.table like for other traits
-model.mhq <- data.table(pivot_wider(means, names_from = error, values_from = c(mean.children,ratio,mean.has.disorder)))
+model.mhq <- data.table(pivot_wider(mh.affected[,-c("inc.scizo","inc.asd","inc.bipolar")], names_from = error, values_from = c(mean.children,ratio,mean.has.disorder)))
 model.mhq[,sexPulse:=factor(sex,levels=c(1,2),labels=c("Male","Female"))]
 
-## Adjust base fertility to 0 shet
-base.fertility <- simulated.data[shet == 0,mean(children)]
-simulated.data[,dummy:=1]
-
-## The following data tables are used to plot incidence of each of the 
+## The following data table is used to plot incidence of each of the 
 ## MH traits we measure in the study
-scizo.inc <- simulated.data[,sum(dummy),by=c("has.scizo","shet","error","sex")]
-scizo.inc[,type:="scizo"]
-scizo.inc[,has.disorder:=if_else(has.scizo<1.7,TRUE,FALSE)]
-scizo.inc[,has.scizo:=NULL]
-
-asd.inc <- simulated.data[,sum(dummy),by=c("has.asd","shet","error","sex")]
-asd.inc[,type:="asd"]
-asd.inc[,has.disorder:=if_else(has.asd<1.7,TRUE,FALSE)]
-asd.inc[,has.asd:=NULL]
-
-bipolar.inc <- simulated.data[,sum(dummy),by=c("has.bipolar","shet","error","sex")]
-bipolar.inc[,type:="bipolar"]
-bipolar.inc[,has.disorder:=if_else(has.bipolar<1.7,TRUE,FALSE)]
-bipolar.inc[,has.bipolar:=NULL]
-
-# And bind them all together...
-inc.mht <- bind_rows(scizo.inc,asd.inc,bipolar.inc)
-inc.mht <- inc.mht[has.disorder==TRUE]
-inc.mht[,prop.affected:=V1/100000]
-inc.mht[,V1:=NULL]
+inc.mht <- data.table(pivot_longer(mh.affected,cols=starts_with("inc."),names_sep="\\.",names_to = c(".value","condition")))
+inc.mht <- data.table(pivot_wider(inc.mht[,c("shet","sex","inc","condition","error")], names_from=error,values_from=inc))
 inc.mht[,sexPulse:=factor(sex,levels=c(1,2),labels=c("Male","Female"))]
-inc.mht <- data.table(pivot_wider(inc.mht, names_from = error, values_from = prop.affected))
-
-rm(scizo.inc, asd.inc, bipolar.inc)
 
 paste0("Contribution of MHTs to Fitness: ",
        sprintf("%0.1f",(((1 - model.mhq[shet == 1 & sex == 1,ratio_mid]) / (1 - model.fertility[shet == 1 & sex == 1,ratio_mid]))*100)),
@@ -3137,6 +3792,97 @@ mean.plot <- ggplot(means,aes(as.factor(same.sex),mean,group=sexPulse,colour=sex
 (mean.plot | beta.plot) + plot_layout(widths=c(3,1),guides = "collect")
 rm(mean.plot, beta.plot)
 ```
+
+## 6J. Fertility + Neutral Phenotypes
+
+```{r}
+sex.diff.fruit <- data.table(sexPulse=c(1,2))
+sex.diff.fruit[,c("beta","std.error","p.val","data","model"):=run.lm(sexPulse,"fresh.fruit"),by=1:nrow(sex.diff.fruit)]
+
+## Add CIs, factorize sex, get OR (from log odds ratio)
+sex.diff.fruit[,var.ci.upper:=exp(beta + (1.96*std.error))]
+sex.diff.fruit[,var.ci.lower:=exp(beta - (1.96*std.error))]
+sex.diff.fruit[,sig.pos:=if_else(beta<1,var.ci.lower-0.1,var.ci.upper+0.1)]
+sex.diff.fruit[,beta:=exp(beta)]
+sex.diff.fruit[,sexPulse:=factor(sexPulse,levels=c(1,2),labels=c("Male","Female"))]
+
+## This is just a plot of the betas from the LM
+beta.plot <- ggplot(sex.diff.fruit, aes(sexPulse,beta,colour=sexPulse)) +
+  geom_point() +
+  geom_errorbar(aes(ymin=var.ci.lower,ymax=var.ci.upper)) + 
+  scale_y_continuous(name="OR",limits=c(0.75,1.25)) + 
+  sex.colours.colour +
+  theme.legend
+
+## This grabs the actual fit values from the LM to plot
+post.lm.dt <- rbind(sex.diff.fruit[1,data][[1]],sex.diff.fruit[2,data][[1]])
+post.lm.dt[,sexPulse:=factor(sexPulse,levels=c(1,2),labels=c("Male","Female"))]
+post.lm.dt[,dummy:=1]
+
+## Tabulate the means by sex
+means <- post.lm.dt[,list(mean(`.resid`),sd(`.resid`),sum(dummy)),by=c("fresh.fruit","sexPulse")]
+setnames(means,c("V1","V2","V3"),c("mean","sd","n"))
+means[,ci:=(sd/sqrt(n))*1.96]
+
+## Now plot the means by sex
+mean.plot <- ggplot(means,aes(as.factor(fresh.fruit),mean,group=sexPulse,colour=sexPulse)) +
+  geom_point(position=position_dodge(0.5)) +
+  geom_errorbar(aes(ymin=mean-ci,ymax=mean+ci),width=0,position=position_dodge(0.5)) +
+  scale_y_continuous(name="Births Corrected For\nAge & PC1..10") +
+  scale_x_discrete(name = "Fresh Fruit Intake") +
+  sex.colours.colour +
+  theme.legend
+
+## Use patchwork to mash them together
+(mean.plot | beta.plot) + plot_layout(widths=c(3,1),guides = "collect")
+rm(mean.plot, beta.plot)
+```
+
+```{r}
+
+sex.diff.handedness <- data.table(sexPulse=c(1,2))
+sex.diff.handedness[,c("beta","std.error","p.val","data","model"):=run.lm(sexPulse,"handedness"),by=1:nrow(sex.diff.handedness)]
+
+## Add CIs, factorize sex, get OR (from log odds ratio)
+sex.diff.handedness[,var.ci.upper:=exp(beta + (1.96*std.error))]
+sex.diff.handedness[,var.ci.lower:=exp(beta - (1.96*std.error))]
+sex.diff.handedness[,sig.pos:=if_else(beta<1,var.ci.lower-0.1,var.ci.upper+0.1)]
+sex.diff.handedness[,beta:=exp(beta)]
+sex.diff.handedness[,sexPulse:=factor(sexPulse,levels=c(1,2),labels=c("Male","Female"))]
+
+## This is just a plot of the betas from the LM
+beta.plot <- ggplot(sex.diff.handedness, aes(sexPulse,beta,colour=sexPulse)) +
+  geom_point() +
+  geom_errorbar(aes(ymin=var.ci.lower,ymax=var.ci.upper)) + 
+  scale_y_continuous(name="OR",limits=c(0.75,1.4)) + 
+  sex.colours.colour +
+  theme.legend
+
+## This grabs the actual fit values from the LM to plot
+post.lm.dt <- rbind(sex.diff.handedness[1,data][[1]],sex.diff.handedness[2,data][[1]])
+post.lm.dt[,sexPulse:=factor(sexPulse,levels=c(1,2),labels=c("Male","Female"))]
+post.lm.dt[,dummy:=1]
+
+## Tabulate the means by sex
+means <- post.lm.dt[,list(mean(`.resid`),sd(`.resid`),sum(dummy)),by=c("handedness","sexPulse")]
+setnames(means,c("V1","V2","V3"),c("mean","sd","n"))
+means[,ci:=(sd/sqrt(n))*1.96]
+
+## Now plot the means by sex
+mean.plot <- ggplot(means,aes(as.factor(handedness),mean,group=sexPulse,colour=sexPulse)) +
+  geom_point(position=position_dodge(0.5)) +
+  geom_errorbar(aes(ymin=mean-ci,ymax=mean+ci),width=0,position=position_dodge(0.5)) +
+  scale_y_continuous(name="Births Corrected For\nAge & PC1..10") +
+  scale_x_discrete(name = "Handedness",labels=c("Right","Left")) +
+  sex.colours.colour +
+  theme.legend
+
+## Use patchwork to mash them together
+(mean.plot | beta.plot) + plot_layout(widths=c(3,1),guides = "collect")
+rm(mean.plot, beta.plot)
+
+```
+
 
 # 7. Figures
 
@@ -3284,7 +4030,7 @@ plot.a <- make.meta.table(results.fertility, F, b = 0.25)
 
 ## the 'tab' data.frame is relevant only for plot b and c, using old regressions for plot. 
 ## This is to just tabulate vitality statistics for each individual
-tab <- UKBB.phenotype.data[,c("eid","sexPulse","agePulse","agePulse.squared","children.fathered","live.births","partner.in.house","PC1","PC2","PC3","PC4","PC5","PC6","PC7","PC8","PC9","PC10")]
+tab <- UKBB.phenotype.data[,c("eid","sexPulse","agePulse","agePulse.squared","children.fathered","live.births","partner.in.house","PC1","PC2","PC3","PC4","PC5","PC6","PC7","PC8","PC9","PC10","PC11","PC12","PC13","PC14","PC15","PC16","PC17","PC18","PC19","PC20","PC21","PC22","PC23","PC24","PC25","PC26","PC27","PC28","PC29","PC30")]
 
 tab[,children:=if_else(sexPulse==1,children.fathered,live.births)]
 tab <- tab[!is.na(children)]
@@ -3441,11 +4187,127 @@ paste0("Number of Fluid Intel Indv: ", sum(fig.cog[[1]][variant.type == "META",n
 
 ```{r Main Text Figure 3, fig.height=3, fig.width=4}
 
-figure.3 <- ggplot(model.fertility, aes(x = shet, group = sexPulse, fill = sexPulse)) + geom_line(aes(y = ratio_mid, colour = sexPulse), size=2) + geom_ribbon(aes(ymin= ratio_lower, ymax = ratio_upper), alpha = 0.5) + scale_alpha_continuous(range = c(0,1)) + sex.colours.colour + sex.colours.fill + geom_abline(intercept=1,slope=-1,linetype=2) + scale_x_continuous(name=expression(bold(s[het])), limits = c(0,1), expand = c(0,0)) + scale_y_continuous(name = "Predicted Reduction in Fitness", limits = c(0,1.05)) + theme.figures.legend
+figure.3 <- ggplot(model.fertility, aes(x = shet, group = sexPulse, fill = sexPulse)) + 
+  geom_line(aes(y = ratio_mid, colour = sexPulse), size=2) + 
+  geom_ribbon(aes(ymin= ratio_lower, ymax = ratio_upper), alpha = 0.5) + 
+  scale_alpha_continuous(range = c(0,1)) + 
+  sex.colours.colour + 
+  sex.colours.fill + 
+  geom_abline(intercept=1,slope=-1,linetype=2) + 
+  scale_x_continuous(name=expression(bold(s[het])), limits = c(0,1), expand = c(0,0)) + 
+  scale_y_continuous(name = "Predicted Reduction in Fitness", limits = c(0,1.05)) + 
+  theme.figures.legend
 
 figure.3
 
 ggsave("figures/Figure3.svg",figure.3,width=4,height=3,units = "in")
+
+```
+
+### Figure X.
+
+```{r Main Text Figure X, fig.height=5, fig.width=8}
+
+hes.plot.table <- hes.analysis.table[variant.type == "META" & level == 3]
+hes.plot.table[,icd.p.log:=if_else(icd.p.log > 100 | icd.p.log == 0,100,icd.p.log)]
+
+male.icd <- ggplot(hes.plot.table[sex == "MALE"],aes(var.p.log,factor*icd.p.log,colour=chapter)) + 
+  geom_point(size=0.5) +
+  scale_x_continuous(name = "", breaks = c(13,13.4,13.8,14.2,14.6), limits = c(12.9,14.7)) +
+  scale_y_continuous(name = expression(bold(-log[10]~p~value~`for`~`ICD-10`~code~on~having~children)), limits = c(-100,100), labels = c("p ≥ 100","50","0","50","p ≥ 100")) +
+  geom_text(data = hes.plot.table[sex == "MALE" & (var.p.log < 13.9 | icd.p.log > 25)],aes(label=meaning),size=3) +
+  ggtitle("Males") +
+  theme.figures + theme(plot.title = element_text(hjust = 0.5))
+
+male.icd
+
+female.icd <- ggplot(hes.plot.table[sex == "FEMALE"],aes(var.p.log,factor*icd.p.log,colour=chapter)) + 
+  geom_point(size=0.5) + 
+  scale_x_continuous(name = "") +
+  scale_y_continuous(name = "", limits = c(-100,100)) +
+  geom_text(data = hes.plot.table[sex == "FEMALE" & (var.p.log < 1.35 | icd.p.log > 25)],aes(label=meaning),size=3) +
+  ggtitle("Females") +
+  theme.figures + theme(plot.title = element_text(hjust = 0.5), axis.text.y=element_blank())
+
+female.icd
+
+combined.icd.top <- male.icd + female.icd
+combined.icd.bottom <- grid::textGrob(expression(bold(-log[10]~p~value~`for`~`ICD-10`~code~on~having~children)))
+
+combined.icd <- combined.icd.top / combined.icd.bottom + plot_layout(heights=c(5,0.05)) + plot_annotation(tag_levels = "A")
+combined.icd
+
+ggsave("figures/FigureX.svg",combined.icd,width=10,height=6)
+
+combined.icd <- male.icd + female.icd + plot_layout(nrow = 2, ncol = 1) + plot_annotation(tag_levels = "A")
+combined.icd
+
+
+
+```
+
+```{r Main Text Figure Xv2, fig.height=5, fig.width=8}
+
+fi.plot.table <- fi.analysis.table[variant.type == "META" & level == 3]
+fi.plot.table[,icd.p.log:=if_else(icd.p.log > 100 | icd.p.log == 0,100,icd.p.log)]
+
+male.fi <- ggplot(fi.plot.table[sex == "MALE"],aes(var.p.log,factor*icd.p.log,colour=chapter)) + 
+  geom_point(size=0.5) +
+  scale_x_continuous(name = "") +
+  scale_y_continuous(name = expression(bold(-log[10]~p~value~`for`~`ICD-10`~code~on~having~children)), limits = c(-100,100)) +
+  geom_text(data = fi.plot.table[sex == "MALE" & (var.p.log < 8 | var.p.log > 8.4 | icd.p.log > 25)],aes(label=meaning),size=3,nudge_y=0.15) +
+  ggtitle("Males") +
+  theme.figures + theme(plot.title = element_text(hjust = 0.5))
+
+male.fi
+
+female.fi <- ggplot(fi.plot.table[sex == "FEMALE"],aes(var.p.log,factor*icd.p.log,colour=chapter)) + 
+  geom_point(size=0.5) + 
+  scale_x_continuous(name = "") +
+  scale_y_continuous(name = "", limits = c(-100,100)) +
+  geom_text(data = fi.plot.table[sex == "FEMALE" & (var.p.log < 0.57 | icd.p.log > 25)],aes(label=meaning),size=3,nudge_y=0.15) +
+  ggtitle("Females") +
+  theme.figures + theme(axis.text.y = element_blank(), plot.title = element_text(hjust = 0.5))
+
+female.fi
+
+combined.fi.top <- male.fi + female.fi
+combined.fi.bottom <- grid::textGrob(expression(bold(-log[10]~p~value~`for`~the~effect~of~s[het]~burden==1~on~having~children)))
+
+combined.fi <- combined.fi.top / combined.fi.bottom + plot_layout(heights=c(5,0.05)) + plot_annotation(tag_levels = "A")
+combined.fi
+
+```
+
+```{r Main Text Figure Xv2, fig.height=5, fig.width=8}
+
+male.fi.young <- ggplot(fi.young.analysis.table[variant.type == "META" & sex == "MALE" & level == 2],aes(var.p.log,factor*icd.p.log,colour=chapter)) + 
+  geom_point(size=0.5) +
+  scale_x_continuous(name = "") +
+  scale_y_continuous(name = expression(bold(-log[10]~p~value~`for`~`ICD-10`~code~on~having~children)), limits = c(-100,100)) +
+  geom_text(data = fi.young.analysis.table[variant.type == "META" & level == 2 & sex == "MALE" & (var.p.log < 8.1 | var.p.log > 8.4 | icd.p.log > 40)],aes(label=meaning),size=3,nudge_y=0.15) +
+  ggtitle("Males") +
+  theme.figures + theme(plot.title = element_text(hjust = 0.5))
+
+male.fi.young
+
+female.fi.young <- ggplot(fi.young.analysis.table[variant.type == "META" & sex == "FEMALE" & level == 2],aes(var.p.log,factor*icd.p.log,colour=chapter)) + 
+  geom_point(size=0.5) + 
+  scale_x_continuous(name = "") +
+  scale_y_continuous(name = "", limits = c(-100,300)) +
+  geom_text(data = fi.young.analysis.table[variant.type == "META" & level == 2 & sex == "FEMALE" & (var.p.log < 0.57 | icd.p.log > 40)],aes(label=meaning),size=3,nudge_y=0.15) +
+  ggtitle("Females") +
+  theme.figures + theme(axis.text.y = element_blank(), plot.title = element_text(hjust = 0.5))
+
+female.fi.young
+
+combined.fi.young.top <- male.fi.young + female.fi.young
+combined.fi.young.bottom <- grid::textGrob(expression(bold(-log[10]~p~value~`for`~the~effect~of~s[het]~burden==1~on~having~children)))
+
+combined.fi.young <- combined.fi.young.top / combined.fi.young.bottom + plot_layout(heights=c(5,0.05)) + plot_annotation(tag_levels = "A")
+combined.fi.young
+
+# ggsave("figures/FigureX.svg",combined.icd,width=10,height=6)
 
 ```
 
@@ -3457,6 +4319,11 @@ ggsave("figures/Figure3.svg",figure.3,width=4,height=3,units = "in")
 no.male.fertility.plot <- make.meta.table(results.excl.male, F, gene.list = "product_sHET_no_male_infertility")
 
 no.male.fertility.plot[[1]][Sex == "Male" & variant.type == "META",paste0(Sex, " Fertility Gene OR=",sprintf("%0.2f",var.beta), " [95% CI ",sprintf("%0.2f",exp(log(var.beta)-(1.96*var.stderr))), "-",sprintf("%0.2f",exp(log(var.beta)+(1.96*var.stderr))),"]", " p=",if_else(var.p<=1e-2,sprintf("%0.1e",var.p),sprintf("%0.2f",var.p)))]
+
+## no mouse fertility genes
+mouse.data <- make.meta.table(results.excl.mouse, F, gene.list = "product_sHET_no_mouse_infertility")
+
+mouse.data[[1]][Sex == "Male" & variant.type == "META",paste0(Sex, " OR=",sprintf("%0.2f",var.beta), " [95% CI ",sprintf("%0.2f",exp(log(var.beta)-(1.96*var.stderr))), "-",sprintf("%0.2f",exp(log(var.beta)+(1.96*var.stderr))),"]", " p=",if_else(var.p<=1e-2,sprintf("%0.1e",var.p),sprintf("%0.2f",var.p)))]
 
 ## no pathogenic CNV carriers
 no.path.cnvs.plot <- make.meta.table(results.fertility.no.path, F)
@@ -3472,6 +4339,11 @@ no.mh.patients.plot[[1]][variant.type == "META",paste0(Sex," No MH Patients OR="
 no.disease.plot <- make.meta.table(results.excl.disease, F, gene.list = "product_sHET_no_disease", ymax = 1.6)
 
 no.disease.plot[[1]][Sex == "Male" & variant.type == "META",paste0(Sex," Disease Gene OR=",sprintf("%0.2f",var.beta), " [95% CI ",sprintf("%0.2f",exp(log(var.beta)-(1.96*var.stderr))), "-",sprintf("%0.2f",exp(log(var.beta)+(1.96*var.stderr))),"]", " p=",if_else(var.p<=1e-2,sprintf("%0.1e",var.p),sprintf("%0.2f",var.p)))]
+
+## Exclude same sex individuals
+no.same.sex.plot <- make.meta.table(results.fertility.no.same.sex, F, gene.list = "product_sHET", ymax = 1.6)
+
+no.same.sex.plot[[1]][Sex == "Male" & variant.type == "META",paste0(Sex," Exclude Same Sex OR=",sprintf("%0.2f",var.beta), " [95% CI ",sprintf("%0.2f",exp(log(var.beta)-(1.96*var.stderr))), "-",sprintf("%0.2f",exp(log(var.beta)+(1.96*var.stderr))),"]", " p=",if_else(var.p<=1e-2,sprintf("%0.1e",var.p),sprintf("%0.2f",var.p)))]
 ```
 
 ## 7C. Supplement
@@ -3635,7 +4507,7 @@ UKBB.counts[,AF:=factor(AF,levels=c("Private Vars.","MAF ≤ 1e-3 Vars."))]
 all.plot <- ggplot(UKBB.counts,aes(CSQ,count,colour=AF)) + geom_boxplot() + scale_x_discrete(name = "Variant Class") + scale_y_log10(name = "# of Variants") + scale_colour_discrete(guide=guide_legend(title="")) + theme.figures
 all.plot
 
-missense.plot <- ggplot(UKBB.counts[CSQ == "Missense"],aes(count,fill=AF)) + geom_histogram(binwidth=1, position = "identity", alpha = 0.5) + scale_y_continuous(name = "Number of Individuals") + scale_x_continuous(name = "# of Missense Vars.") + scale_alpha_continuous(range=c(0,1)) + scale_fill_discrete(guide=guide_legend(title="")) + theme.figures.legend
+missense.plot <- ggplot(UKBB.counts[CSQ == "Missense"],aes(count,fill=AF)) + geom_histogram(binwidth=1, position = "identity", alpha = 0.5) + scale_y_continuous(name = "Number of Individuals") + scale_x_continuous(name = "# of CADD > 25,\nMPC > 2 Missense Vars.") + scale_alpha_continuous(range=c(0,1)) + scale_fill_discrete(guide=guide_legend(title="")) + theme.figures.legend
 missense.plot
 
 ptv.plot <- ggplot(UKBB.counts[CSQ == "PTVs"],aes(count,fill=AF)) + geom_histogram(binwidth=1, position = "identity", alpha = 0.5) + scale_y_continuous(name = "") + scale_x_continuous(name = "# of PTVs") + scale_alpha_continuous(range=c(0,1)) + scale_fill_discrete(guide=guide_legend(title="")) + theme.figures.legend
@@ -3763,7 +4635,7 @@ plot.all.variants <- ggplot(plottable[maf == 0],aes(variant.type,var.beta,group=
     geom_errorbar(aes(ymin=var.ci.lower,ymax=var.ci.upper),width=0.1,position=position_dodge(0.5)) +
     geom_text(aes(y = 0.05, label=paste0("p = ", sprintf("%0.2g",var.p))),position=position_dodge(0.5),size=4,hjust=1,show.legend = F) +
     scale_x_discrete(name = "", position = "top",labels=c("Dels","Dups","PTVs","Missense\n(CADD > 25, MPC > 2)","Synonymous")) +
-    scale_y_continuous(name=y.axis,limits = c(-0.15,1.3), breaks=plot.breaks) +
+    scale_y_continuous(name=y.axis,limits = c(-0.15,1.35), breaks=plot.breaks) +
     scale_shape_identity() +
     scale_size_area(breaks=c(50000,100000,150000),guide=guide_legend(title="# of Indivs.")) +
     sex.colours.colour.rev +
@@ -3778,71 +4650,39 @@ ggsave("figures/supplement/SuppFig8.png",plot.all.variants, dpi = 600, height = 
 
 #### Figure 9.
 
-```{r Supp Fig 9, fig.height=10, fig.width=8}
+```{r Supp Fig 9, fig.height=5, fig.width=10}
 
 ## Has a Private DEL
 plot.testis.del.shet.wilcox <- wilcox.test(log.mean ~ has.del, data = shet.genes.expr[sHET.val > 0.15],alternative=c("less"))
 plot.testis.del.shet <- ggplot(shet.genes.expr[sHET.val > 0.15], aes(as.factor(has.del), log.mean, group = as.factor(has.del))) +
   geom_boxplot() +
-  scale_x_discrete(name = "Has a private DEL") +
-  scale_y_continuous(name = "") +
+  scale_x_discrete(name = expression(bold(atop(s[het]>0.15~gene,with~private~Deletion)))) +
+  scale_y_continuous(name = expression(bold(Median~log[e]~Testis~Expr.))) +
   annotate("text", x = 1.5, y = 6, size = 4, label = if_else(plot.testis.del.shet.wilcox$p.value < 0.05, paste0("p = ", sprintf("%0.1e", plot.testis.del.shet.wilcox$p.value)),"p > 0.05")) +
-  ggtitle(expression(bold(s[HET] >= 0.15~Genes))) +
-  coord_flip() +
-  theme
-
-plot.testis.del.wilcox <- wilcox.test(log.mean ~ has.del, data = shet.genes.expr,alternative=c("less"))
-plot.testis.del <- ggplot(shet.genes.expr, aes(as.factor(has.del), log.mean, group = as.factor(has.del))) +
-  geom_boxplot() +
-  scale_x_discrete(name = "") +
-  scale_y_continuous(name = "") +
-  annotate("text", x = 1.5, y = 6, size = 4, label = if_else(plot.testis.del.wilcox$p.value < 0.05, paste0("p = ", sprintf("%0.1e", plot.testis.del.wilcox$p.value)),"p > 0.05")) +
-  ggtitle("All Genes") +
-  coord_flip() +
   theme
 
 ## Has a Private PTV
 plot.testis.ptv.shet.wilcox <- wilcox.test(log.mean ~ has.ptv, data = shet.genes.expr[sHET.val > 0.15],alternative=c("less"))
 plot.testis.ptv.shet <- ggplot(shet.genes.expr[sHET.val > 0.15], aes(as.factor(has.ptv), log.mean, group = as.factor(has.ptv))) +
   geom_boxplot() +
-  scale_x_discrete(name = "Has a private PTV") +
+  scale_x_discrete(name = expression(bold(atop(s[het]>0.15~gene,with~private~PTV)))) +
   scale_y_continuous(name = "") +
   annotate("text", x = 1.5, y = 6, size = 4, label = if_else(plot.testis.ptv.shet.wilcox$p.value < 0.05, paste0("p = ", sprintf("%0.1e", plot.testis.ptv.shet.wilcox$p.value)),"p > 0.05")) +
-  coord_flip() +
-  theme
-
-plot.testis.ptv.wilcox <- wilcox.test(log.mean ~ has.ptv, data = shet.genes.expr,alternative=c("less"))
-plot.testis.ptv <- ggplot(shet.genes.expr, aes(as.factor(has.ptv), log.mean, group = as.factor(has.ptv))) +
-  geom_boxplot() +
-  scale_x_discrete(name = "") +
-  scale_y_continuous(name = "") +
-  annotate("text", x = 1.5, y = 6, size = 4, label = if_else(plot.testis.ptv.wilcox$p.value < 0.05, paste0("p = ", sprintf("%0.1e", plot.testis.ptv.wilcox$p.value)),"p > 0.05")) +
-  coord_flip() +
   theme
 
 ## Is a male infertility gene
-plot.male.shet.wilcox <- wilcox.test(log.mean ~ male.infertility, data = shet.genes.expr[sHET.val > 0.15],alternative=c("less"))
-plot.male.shet <- ggplot(shet.genes.expr[sHET.val > 0.15], aes(as.factor(male.infertility), log.mean, group = as.factor(male.infertility))) +
-  geom_boxplot() +
-  scale_x_discrete(name = "Is male infertility gene?") + 
-  scale_y_continuous(name = expression(bold(Median~log[e](Expr.~Testis)))) + 
-  annotate("text", x = 1.5, y = 6, size = 4, label = if_else(plot.male.shet.wilcox$p.value < 0.05, paste0("p = ", sprintf("%0.1e", plot.male.shet.wilcox$p.value)),"p > 0.05")) +
-  coord_flip() +
-  theme
-
 plot.male.wilcox <- wilcox.test(log.mean ~ male.infertility, data = shet.genes.expr,alternative=c("less"))
 plot.male <- ggplot(shet.genes.expr, aes(as.factor(male.infertility), log.mean, group = as.factor(male.infertility))) + 
   geom_boxplot() +
-  scale_x_discrete(name = "") +
-  scale_y_continuous(name = expression(bold(Median~log[e](Expr.~Testis)))) + 
+  scale_x_discrete(name = "Is Male Infertility Gene?") +
+  scale_y_continuous(name = "") + 
   annotate("text", x = 1.5, y = 6, size = 4, label = if_else(plot.male.wilcox$p.value < 0.05, paste0("p = ", sprintf("%0.1e", plot.male.wilcox$p.value)),"p > 0.05")) +
-  coord_flip() +
   theme
 
-plot.testis <- plot.testis.del.shet + plot.testis.del + plot.testis.ptv.shet + plot.testis.ptv  + plot.male.shet + plot.male + plot_layout(nrow=3, guides = "collect") + plot_annotation(tag_levels='A')
+plot.testis <- plot.testis.del.shet + plot.testis.ptv.shet + plot.male + plot_layout(ncol=3, guides = "collect") + plot_annotation(tag_levels='A')
 plot.testis
 
-ggsave("figures/supplement/SuppFig9.png",plot.testis, dpi = 300, height = 10, width = 8, units = "in")
+ggsave("figures/supplement/SuppFig9.png",plot.testis, dpi = 300, height = 5, width = 10, units = "in")
 
 ```
 
@@ -3918,65 +4758,97 @@ ggsave("figures/supplement/SuppFig11.png",same.sex[[2]], dpi = 600, height = 3, 
 same.sex[[1]][Sex == "Male" & variant.type == "META",paste0(Sex, " Same Sex OR=",sprintf("%0.2f",var.beta), " [95% CI ",sprintf("%0.2f",exp(log(var.beta)-(1.96*var.stderr))), "-",sprintf("%0.2f",exp(log(var.beta)+(1.96*var.stderr))),"]", " p=",if_else(var.p<=1e-2,sprintf("%0.1e",var.p),sprintf("%0.2f",var.p)))]
 ```
 
-#### Figure 12.
+#### Figure 12a.
 
-```{r Supp Fig 12, fig.height=15, fig.width=14}
-
-## Fertility
-
-plot.fert.fert <- ggplot(model.fertility, aes(x = shet, group = sexPulse, fill = sexPulse)) + geom_line(aes(y = ratio_mid, colour = sexPulse), size=2) + geom_ribbon(aes(ymin= ratio_lower, ymax = ratio_upper), alpha = 0.5) + scale_alpha_continuous(range = c(0,1)) + sex.colours.colour + sex.colours.fill + geom_abline(intercept=1,slope=-1,linetype=2) + scale_x_continuous(name=expression(bold(s[het])), limits = c(0,1), expand = c(0,0)) + scale_y_continuous(name = "Predicted Fitness", limits = c(0,1.05)) + theme.figures.legend
+```{r Supp Fig 12a, fig.height=3, fig.width=4}
 
 plot.child.fert <- ggplot(model.fertility, aes(x = shet, group = sexPulse, fill = sexPulse)) + geom_line(aes(y = mean.childlessness_mid, colour = sexPulse), size=2) + geom_ribbon(aes(ymin= mean.childlessness_lower, ymax = mean.childlessness_upper), alpha = 0.5) + scale_alpha_continuous(range = c(0,1)) + sex.colours.colour + sex.colours.fill + scale_x_continuous(name=expression(bold(s[het])), limits = c(0,1), expand = c(0,0)) + scale_y_continuous(name = "Predicted Childlessness", limits = c(0.1,0.6)) + theme.figures.legend
 
-## Partner at home
+plot.child.fert
 
+ggsave("figures/supplement/SuppFig12a.png",plot.child.fert,width=4,height=3,units = "in")
+
+```
+
+#### Figure 12b.
+
+```{r Supp Fig 12b, fig.height = 3, fig.width = 8.5}
+
+## Partner at home
 plot.partner <- ggplot(model.partner, aes(x = shet, group = sexPulse, fill = sexPulse)) + geom_line(aes(y = expected.without.partner_mid, colour = sexPulse), size=2) + geom_ribbon(aes(ymin= expected.without.partner_lower, ymax = expected.without.partner_upper), alpha = 0.5) + scale_alpha_continuous(range = c(0,1)) + sex.colours.colour + sex.colours.fill + scale_x_continuous(name=expression(bold(s[het])), limits = c(0,1), expand = c(0,0)) + scale_y_continuous(name = "Predicted Without A Partner") + theme.figures.legend
 
 plot.fert.partner <- ggplot(model.partner, aes(x = shet, group = sexPulse, fill = sexPulse)) + geom_line(aes(y = ratio_mid, colour = sexPulse), size=2) + geom_ribbon(aes(ymin= ratio_lower, ymax = ratio_upper), alpha = 0.5) + scale_alpha_continuous(range = c(0,1)) + sex.colours.colour + sex.colours.fill + geom_abline(intercept=1,slope=-1,linetype=2) + scale_x_continuous(name=expression(bold(s[het])), limits = c(0,1), expand = c(0,0)) + scale_y_continuous(name = "Predicted Fitness", limits = c(0,1.05)) + theme.figures.legend
 
 plot.child.partner <- ggplot(model.partner, aes(x = shet, group = sexPulse, fill = sexPulse)) + geom_line(aes(y = mean.childlessness_mid, colour = sexPulse), size=2) + geom_ribbon(aes(ymin= mean.childlessness_lower, ymax = mean.childlessness_upper), alpha = 0.5) + scale_alpha_continuous(range = c(0,1)) + sex.colours.colour + sex.colours.fill + scale_x_continuous(name=expression(bold(s[het])), limits = c(0,1), expand = c(0,0)) + scale_y_continuous(name = "Predicted Childlessness", limits = c(0.1,0.6)) + theme.figures.legend
 
-## Educational Attainment
+partner.fertility.plot <- plot.partner + plot.child.partner + plot.fert.partner + ## Partner at home
+  plot_layout(nrow = 1, ncol = 3, guides = "collect") + plot_annotation(tag_levels = 'A')
 
+partner.fertility.plot
+
+ggsave("figures/supplement/SuppFig12b.png",partner.fertility.plot,width=8.5,height=3,units = "in")
+
+```
+
+#### Figure 12c.
+
+```{r Supp Fig 12c, fig.height = 3, fig.width = 8.5}
+
+## Educational Attainment
 plot.college <- ggplot(model.ea, aes(x = shet, group = sexPulse, fill = sexPulse)) + geom_line(aes(y = expected.completed.college_mid, colour = sexPulse), size=2) + geom_ribbon(aes(ymin= expected.completed.college_lower, ymax = expected.completed.college_upper), alpha = 0.5) + scale_alpha_continuous(range = c(0,1)) + sex.colours.colour + sex.colours.fill + scale_x_continuous(name=expression(bold(s[het])), limits = c(0,1), expand = c(0,0)) + scale_y_continuous(name = "Predicted College Completion") + theme.figures.legend
 
 plot.fert.ea <- ggplot(model.ea, aes(x = shet, group = sexPulse, fill = sexPulse)) + geom_line(aes(y = ratio_mid, colour = sexPulse), size=2) + geom_ribbon(aes(ymin= ratio_lower, ymax = ratio_upper), alpha = 0.5) + scale_alpha_continuous(range = c(0,1)) + sex.colours.colour + sex.colours.fill + geom_abline(intercept=1,slope=-1,linetype=2) + scale_x_continuous(name=expression(bold(s[het])), limits = c(0,1), expand = c(0,0)) + scale_y_continuous(name = "Predicted Fitness", limits = c(0,1.05)) + theme.figures.legend
 
 plot.child.ea <- ggplot(model.ea, aes(x = shet, group = sexPulse, fill = sexPulse)) + geom_line(aes(y = mean.childlessness_mid, colour = sexPulse), size=2) + geom_ribbon(aes(ymin= mean.childlessness_lower, ymax = mean.childlessness_upper), alpha = 0.5) + scale_alpha_continuous(range = c(0,1)) + sex.colours.colour + sex.colours.fill + scale_x_continuous(name=expression(bold(s[het])), limits = c(0,1), expand = c(0,0)) + scale_y_continuous(name = "Predicted Childlessness", limits = c(0.1,0.6)) + theme.figures.legend
 
-## Cognition
+college.fertility.plot <- plot.college + plot.child.ea + plot.fert.ea + ## EA
+  plot_layout(nrow = 1, ncol = 3, guides = "collect") + plot_annotation(tag_levels = 'A')
 
+college.fertility.plot
+
+ggsave("figures/supplement/SuppFig12c.png",college.fertility.plot,width=8.5,height=3,units = "in")
+```
+
+#### Figure 12d.
+
+```{r Supp Fig 12d, fig.height = 3, fig.width = 8.5}
+
+## Cognition
 plot.iq <- ggplot(model.cog, aes(x = shet, group = sexPulse, fill = sexPulse)) + geom_line(aes(y = expected.iq_mid, colour = sexPulse), size=2) + geom_ribbon(aes(ymin= expected.iq_lower, ymax = expected.iq_upper), alpha = 0.5) + scale_alpha_continuous(range = c(0,1)) + sex.colours.colour + sex.colours.fill + geom_abline(intercept=1,slope=-1,linetype=2) + scale_x_continuous(name=expression(bold(s[het])), limits = c(0,1), expand = c(0,0)) + scale_y_continuous(name = "Predicted IQ") + theme.figures.legend
 
 plot.fert.iq <- ggplot(model.cog, aes(x = shet, group = sexPulse, fill = sexPulse)) + geom_line(aes(y = ratio_mid, colour = sexPulse), size=2) + geom_ribbon(aes(ymin= ratio_lower, ymax = ratio_upper), alpha = 0.5) + scale_alpha_continuous(range = c(0,1)) + sex.colours.colour + sex.colours.fill + geom_abline(intercept=1,slope=-1,linetype=2) + scale_x_continuous(name=expression(bold(s[het])), limits = c(0,1), expand = c(0,0)) + scale_y_continuous(name = "Predicted Fitness", limits = c(0.9,1.05)) + theme.figures.legend
 
 plot.child.iq <- ggplot(model.cog, aes(x = shet, group = sexPulse, fill = sexPulse)) + geom_line(aes(y = mean.childlessness_mid, colour = sexPulse), size=2) + geom_ribbon(aes(ymin= mean.childlessness_lower, ymax = mean.childlessness_upper), alpha = 0.5) + scale_alpha_continuous(range = c(0,1)) + sex.colours.colour + sex.colours.fill + scale_x_continuous(name=expression(bold(s[het])), limits = c(0,1), expand = c(0,0)) + scale_y_continuous(name = "Predicted Childlessness", limits = c(0.1,0.3)) + theme.figures.legend
 
-## Mental Health
+cognition.fertility.plot <- plot.iq + plot.child.iq + plot.fert.iq + ## Cognition
+  plot_layout(nrow = 1, ncol = 3, guides = "collect") + plot_annotation(tag_levels = 'A')
 
-plot.mh <- ggplot(model.mhq, aes(x = shet, group = sexPulse, fill = sexPulse)) + geom_line(aes(y = mean.has.disorder_mid, colour = sexPulse), size=2) + geom_ribbon(aes(ymin= mean.has.disorder_lower, ymax = mean.has.disorder_upper), alpha = 0.5) + scale_alpha_continuous(range = c(0,1)) + sex.colours.colour + sex.colours.fill + scale_x_continuous(name=expression(bold(s[het])), limits = c(0,1), expand = c(0,0)) + scale_y_continuous(name = "Predicted MH Disorder Inc.") + theme.figures.legend
+cognition.fertility.plot
+
+ggsave("figures/supplement/SuppFig12d.png",cognition.fertility.plot,width=8.5,height=3,units = "in")
+```
+
+#### Figure 12e.
+
+```{r Supp Fig 12d, fig.height = 6, fig.width = 8.5}
+
+plot.mh <- ggplot(model.mhq, aes(x = shet, group = sexPulse, fill = sexPulse)) + geom_line(aes(y = mean.has.disorder_mid, colour = sexPulse), size=2) + geom_ribbon(aes(ymin= mean.has.disorder_lower, ymax = mean.has.disorder_upper), alpha = 0.5) + scale_alpha_continuous(range = c(0,1)) + sex.colours.colour + sex.colours.fill + scale_x_continuous(name=expression(bold(s[het])), limits = c(0,1), expand = c(0,0)) + scale_y_continuous(name = "", limits = c(0,0.125)) + ggtitle("Combined") + theme.figures + theme(plot.title = element_text(hjust=0.5, size = 10))
 
 plot.fert.mh <- ggplot(model.mhq, aes(x = shet, group = sexPulse, fill = sexPulse)) + geom_line(aes(y = ratio_mid, colour = sexPulse), size=2) + geom_ribbon(aes(ymin= ratio_lower, ymax = ratio_upper), alpha = 0.5) + scale_alpha_continuous(range = c(0,1)) + sex.colours.colour + sex.colours.fill + geom_abline(intercept=1,slope=-1,linetype=2) + scale_x_continuous(name=expression(bold(s[het])), limits = c(0,1), expand = c(0,0)) + scale_y_continuous(name = "Predicted Fitness", limits = c(0.8,1.05)) + theme.figures.legend
 
-inc.plot.scizo <- ggplot(inc.mht[type == "scizo"], aes(x = shet, group = sexPulse, fill = sexPulse)) + geom_line(aes(y = mid, colour = sexPulse), size=2) + geom_ribbon(aes(ymin= lower, ymax = upper),alpha=0.5) + scale_alpha_continuous(range = c(0,1)) + sex.colours.colour + sex.colours.fill + scale_x_continuous(name=expression(bold(s[het])), limits = c(0,1), expand = c(0,0)) + scale_y_continuous(name = "Predicted Incidence Schizo.", limits = c(0,0.1)) + theme.figures.legend
+inc.plot.scizo <- ggplot(inc.mht[condition == "scizo"], aes(x = shet, group = sexPulse, fill = sexPulse)) + geom_line(aes(y = mid, colour = sexPulse), size=2) + geom_ribbon(aes(ymin= lower, ymax = upper),alpha=0.5) + scale_alpha_continuous(range = c(0,1)) + sex.colours.colour + sex.colours.fill + scale_x_continuous(name=expression(bold(s[het])), limits = c(0,1), expand = c(0,0)) + scale_y_continuous(name = "Incidence", limits = c(0,0.125)) + theme.figures + ggtitle ("Schizophrenia") + theme(plot.title = element_text(hjust=0.5, size = 10))
 
-inc.plot.asd <- ggplot(inc.mht[type == "asd"], aes(x = shet, group = sexPulse, fill = sexPulse)) + geom_line(aes(y = mid, colour = sexPulse), size=2) + geom_ribbon(aes(ymin= lower, ymax = upper),alpha=0.5) + scale_alpha_continuous(range = c(0,1)) + sex.colours.colour + sex.colours.fill + scale_x_continuous(name=expression(bold(s[het])), limits = c(0,1), expand = c(0,0)) + scale_y_continuous(name = "Predicted Incidence ASD", limits = c(0,0.1)) + theme.figures.legend
+inc.plot.asd <- ggplot(inc.mht[condition == "asd"], aes(x = shet, group = sexPulse, fill = sexPulse)) + geom_line(aes(y = mid, colour = sexPulse), size=2) + geom_ribbon(aes(ymin= lower, ymax = upper),alpha=0.5) + scale_alpha_continuous(range = c(0,1)) + sex.colours.colour + sex.colours.fill + scale_x_continuous(name=expression(bold(s[het])), limits = c(0,1), expand = c(0,0)) + scale_y_continuous(name = "", limits = c(0,0.125)) + theme.figures + ggtitle ("ASD") + theme(plot.title = element_text(hjust=0.5, size = 10))
 
-inc.plot.bipolar <- ggplot(inc.mht[type == "bipolar"], aes(x = shet, group = sexPulse, fill = sexPulse)) + geom_line(aes(y = mid, colour = sexPulse), size=2) + geom_ribbon(aes(ymin= lower, ymax = upper),alpha=0.5) + scale_alpha_continuous(range = c(0,1)) + sex.colours.colour + sex.colours.fill + scale_x_continuous(name=expression(bold(s[het])), limits = c(0,1), expand = c(0,0)) + scale_y_continuous(name = "Predicted Incidence Bipolar Dis.", limits = c(0,0.1)) + theme.figures.legend
+inc.plot.bipolar <- ggplot(inc.mht[condition == "bipolar"], aes(x = shet, group = sexPulse, fill = sexPulse)) + geom_line(aes(y = mid, colour = sexPulse), size=2) + geom_ribbon(aes(ymin= lower, ymax = upper),alpha=0.5) + scale_alpha_continuous(range = c(0,1)) + sex.colours.colour + sex.colours.fill + scale_x_continuous(name=expression(bold(s[het])), limits = c(0,1), expand = c(0,0)) + scale_y_continuous(name = "", limits = c(0,0.125)) + ggtitle ("Bipolar Disorder") + theme.figures + theme(plot.title = element_text(hjust=0.5, size = 10))
 
-blank <- ggplot() + geom_text(label='N/A',aes(x=0.4,y=0.5),size=5) + scale_x_continuous(name = "", limits=c(0,1)) + scale_y_continuous(name = "", limits=c(0,1)) + theme.figures.legend + theme(axis.line=element_blank(), panel.grid.major=element_blank(), axis.text.x=element_blank(), axis.text.y=element_blank(), axis.ticks=element_blank())
+mh.fertility.plot.top <- inc.plot.scizo + inc.plot.asd + inc.plot.bipolar + plot.mh + plot_layout(nrow = 1, ncol = 4, guides = "collect") ## MH Incidence
+mh.fertility.plot.bottom <- plot_spacer() + plot.fert.mh + guide_area() + plot_layout(nrow = 1, ncol = 3, guides = "collect") ## MH
 
-plot.predictions <- blank + plot.child.fert + plot.fert.fert + ## Base Fertility
-  plot.partner + plot.child.partner + plot.fert.partner + ## Partner at home
-  plot.college + plot.child.ea + plot.fert.ea + ## EA
-  plot.iq + plot.child.iq + plot.fert.iq + ## Cognition
-  plot.mh + grid::textGrob('N/A') + plot.fert.mh + ## MH
-  inc.plot.scizo + inc.plot.asd + inc.plot.bipolar + ## MH Incidence
-  plot_layout(nrow = 6, ncol = 3, guides = "collect") + plot_annotation(tag_levels = 'A')
+mh.fertility.plot <- mh.fertility.plot.top / mh.fertility.plot.bottom + plot_annotation(tag_levels = 'A') + plot_layout(guides = "collect")
+mh.fertility.plot
 
-plot.predictions
-
-ggsave("figures/supplement/SuppFig12.png",plot.predictions, dpi = 300, height = 15, width = 14, units = "in")
+ggsave("figures/supplement/SuppFig12e.png",mh.fertility.plot, dpi = 300, height = 6, width = 8.5, units = "in")
 
 ```
 
@@ -4064,6 +4936,188 @@ children.plots
 ggsave("figures/supplement/SuppFig15.png",children.plots, dpi = 600, height = 5, width = 8, units = "in")
 ```
 
+#### Figure X1.
+
+```{r Supp Fig XX, fig.height=7.5, fig.width=8.5}
+
+cassa.data <- make.meta.table(results.fertility.cassa, F, allele.freq = 0, b=0.25)
+
+del.shet.r2 <- sprintf("%0.3f",summary(lm(product_sHET ~ product_sHET_old,data = variant.counts[type == "DEL" & allele.freq == 0]))$r.squared)
+
+del.shet.plot <- ggplot(variant.counts[type == "DEL" & allele.freq == 0],aes(product_sHET, product_sHET_old)) + 
+  geom_point(size=0.25) + 
+  scale_x_continuous(name = expression(bold(s[het]~burden~Weghorn~et~al.)),limits=c(0,1)) +
+  scale_y_continuous(name = expression(bold(s[het]~burden~Cassa~et~al.)),limits=c(0,1)) +
+  annotate("text",label = bquote(r^2 == .(del.shet.r2)), x = 0.12,y=0.9,size=3.5,colour="red") + 
+  ggtitle(expression(bold(Deletion~s[het]))) +
+  theme.figures + theme(plot.title = element_text(hjust = 0.5))
+
+ptv.shet.r2 <- sprintf("%0.3f",summary(lm(product_sHET ~ product_sHET_old,data = variant.counts[type == "LOF_HC" & allele.freq == 0]))$r.squared)
+
+ptv.shet.plot <- ggplot(variant.counts[type == "LOF_HC" & allele.freq == 0],aes(product_sHET, product_sHET_old)) + 
+  geom_point(size=0.25) + 
+  scale_x_continuous(name = expression(bold(s[het]~burden~Weghorn~et~al.)),limits=c(0,1)) +
+  scale_y_continuous(name = expression(bold(s[het]~burden~Cassa~et~al.)),limits=c(0,1)) +
+  annotate("text",label = bquote(r^2 == .(ptv.shet.r2)), x = 0.12,y=0.9,size=3.5,colour="red") + 
+  ggtitle(expression(bold(PTV~s[het]))) +
+  theme.figures + theme(plot.title = element_text(hjust = 0.5))
+
+top <- del.shet.plot + ptv.shet.plot + plot_layout(ncol = 2, nrow = 1)
+bottom <- cassa.data[[2]] + plot_spacer() + plot_layout(ncol = 2, nrow = 1, widths = c(1,0.001))
+
+shet.comp.plot <- (top / bottom) + plot_layout(heights = c(2,1)) + plot_annotation(tag_levels = 'A')
+shet.comp.plot
+
+ggsave("figures/supplement/SuppFigX1.png",shet.comp.plot, dpi = 600, height = 7.5, width = 8.5, units = "in")
+
+cassa.data[[1]][ variant.type == "META",paste0(Sex, " OR=",sprintf("%0.2f",var.beta), " [95% CI ",sprintf("%0.2f",exp(log(var.beta)-(1.96*var.stderr))), "-",sprintf("%0.2f",exp(log(var.beta)+(1.96*var.stderr))),"]", " p=",if_else(var.p<=1e-2,sprintf("%0.1e",var.p),sprintf("%0.2f",var.p)))]
+
+```
+
+#### Figure X2. 
+
+```{r Figure X2, fig.height=7, fig.width=8.5}
+
+plot.fruit <- make.meta.table(results.fruit, T, ymin = -0.7, ymax= 0.4, block = -1, p.pos = -0.6, title = "Fresh Fruit Intake\nPer Day")
+plot.hands <- make.meta.table(results.handedness, F, b = 0.25, title = "Is Left Handed?", ymax = 3.0)
+plot.hair <- make.meta.table(results.hair, F, b = 0.25, title = "Blonde Hair?", ymax = 3.0)
+
+plot.neutrals <- plot.fruit[[2]] + plot.hands[[2]] + plot.hair[[2]] + plot_layout(nrow = 3, ncol = 1, guides = 'collect') + plot_annotation(tag_levels = 'A')
+plot.neutrals
+
+ggsave("figures/supplement/SuppFigX2.png",plot.neutrals, dpi = 600, height = 7, width = 8.5, units = "in")
+```
+
+#### Figure X3.
+
+```{r Figure X3, fig.height=5, fig.width=7}
+
+pc.effect.plot <- ggplot(pc.effects.table,aes(pc.num,`var.beta`)) + 
+  geom_point() + 
+  geom_errorbar(aes(ymin=var.ci.lower,ymax=var.ci.upper),width=0) + 
+  scale_x_continuous(name = "Ancestry Principal Component", limits = c(1,30)) +
+  scale_y_continuous(name = "OR for effect the of PC\non having children") +
+  theme.figures
+
+pc.num.plot <- ggplot(results.pcs.meta,aes(PCs,log.p)) + 
+  geom_point(size = 2) + 
+  scale_x_discrete(name = "PCs Included in Regression", limits=results.pcs.meta[,PCs]) + 
+  scale_y_continuous(name = expression(bold(atop(-log[10]~p~from,meta~analysis))), limits = c(0,15)) +
+  theme.figures
+
+pc.plots <- pc.effect.plot + pc.num.plot + plot_annotation(tag_levels = 'A') + plot_layout(nrow = 2, heights = c(2,1))
+pc.plots
+
+ggsave("figures/supplement/SuppFigX3.png",pc.plots, dpi = 600, height = 5, width = 7, units = "in")
+
+```
+
+#### Figure X4 & X5.
+
+This plots ALL ICD-10 code associations with corresponding p-value
+
+```{r Supp Fig X5, fig.height=11, fig.width=8}
+
+plot.icd <- function(l, s, icd.data, lims, p.lim, show.x = F) {
+  
+  if (l == 4) {
+    t <- "Level 4 - Disease Subtypes/Body Sites"
+  } else if (l == 3) {
+    t <- "Level 3 - Specific Diseases"
+  } else if (l == 2) {
+    t <- "Level 2 - Disease Blocks"
+  } else if (l == 1) {
+    t <- "Level 1 - ICD Chapters"
+  }
+  
+  adj.theme <- theme.figures + theme(panel.grid.major.x = element_blank(), panel.grid.minor.x=element_line(colour="grey",size=0.5))
+  if (show.x == F) {
+    adj.theme <- adj.theme + theme(axis.text.x = element_blank())
+  }
+  
+  icd.plot <- ggplot(icd.data[variant.type == "META" & level==l & sex == s],aes(chapter,var.or,colour=chapter,group=coding,shape=sex)) + 
+    geom_point(position=position_dodge(1)) + 
+    scale_x_discrete(drop = F, name = if_else(show.x == T, "ICD-10 Chapter", "")) +
+    scale_y_continuous(name = "Meta-analysis Odds Ratio", limits = lims) +
+    geom_text(data = icd.data[variant.type == "META" & level == l & sex == s & var.p.log < p.lim],aes(label=meaning),size=3,nudge_y=0.0005) +
+    ggtitle(t) +
+    adj.theme
+    
+  return(icd.plot)
+  
+}
+
+meta.icd.plot.male <- plot.icd(4, "MALE", hes.analysis.table, c(0.28,0.291), 13.85) +
+  plot.icd(3, "MALE", hes.analysis.table, c(0.28,0.291), 13.85) +
+  plot.icd(2, "MALE", hes.analysis.table, c(0.28,0.291), 13.85) +
+  plot.icd(1, "MALE", hes.analysis.table, c(0.28,0.291), 13.85, show.x = T) +
+  plot_layout(nrow = 4)
+
+meta.icd.plot.male
+ggsave("figures/supplement/SuppFigX4.png",meta.icd.plot.male,width=8,height=11)
+
+meta.icd.plot.female <- plot.icd(4, "FEMALE", hes.analysis.table, c(0.67,0.72), 1.34) +
+  plot.icd(3, "FEMALE", hes.analysis.table, c(0.67,0.72), 1.34) +
+  plot.icd(2, "FEMALE", hes.analysis.table, c(0.67,0.72), 1.34) +
+  plot.icd(1, "FEMALE", hes.analysis.table, c(0.67,0.72), 1.34, show.x = T) +
+  plot_layout(nrow = 4)
+
+meta.icd.plot.female
+ggsave("figures/supplement/SuppFigX5.png",meta.icd.plot.female,width=8,height=11)
+
+```
+
+
+```{r Supp Fig X5, fig.height=8.5, fig.width=8}
+
+meta.fi.plot.male <- plot.icd(3, "MALE", fi.analysis.table, c(0.270,0.286), 8.1) +
+  plot.icd(2, "MALE", fi.analysis.table, c(0.270,0.286), 8.1) +
+  plot.icd(1, "MALE", fi.analysis.table, c(0.270,0.286), 8.1, show.x = T) +
+  plot_layout(nrow = 3)
+
+meta.fi.plot.male
+
+meta.fi.plot.female <- plot.icd(3, "FEMALE", fi.analysis.table, c(0.73,0.795), 0.57) +
+  plot.icd(2, "FEMALE", fi.analysis.table, c(0.73,0.795), 0.5) +
+  plot.icd(1, "FEMALE", fi.analysis.table, c(0.73,0.795), 0.5, show.x = T) +
+  plot_layout(nrow = 3)
+
+meta.fi.plot.female
+
+```
+
+```{r Supp Fig X5, fig.height=8.5, fig.width=8}
+
+meta.fi.young.plot.male <- plot.icd(3, "MALE", fi.young.analysis.table, c(0.270,0.286), 8.1) +
+  plot.icd(2, "MALE", fi.young.analysis.table, c(0.270,0.286), 8.1) +
+  plot.icd(1, "MALE", fi.young.analysis.table, c(0.270,0.286), 8.1, show.x = T) +
+  plot_layout(nrow = 3)
+
+meta.fi.young.plot.male
+
+meta.fi.young.plot.female <- plot.icd(3, "FEMALE", fi.young.analysis.table, c(0.73,0.795), 0.57) +
+  plot.icd(2, "FEMALE", fi.young.analysis.table, c(0.73,0.795), 0.5) +
+  plot.icd(1, "FEMALE", fi.young.analysis.table, c(0.73,0.795), 0.5, show.x = T) +
+  plot_layout(nrow = 3)
+
+meta.fi.young.plot.female
+
+
+```
+
+#### Figure X6
+
+```{r Figure X6, fig.height=3, fig.width=8.5}
+
+fi.only.data <- make.meta.table(results.fertility.FI.only, F, ymax = 1.7, b=0.25)
+fi.only.data
+
+ggsave("figures/supplement/SuppFigX6.png",fi.only.data[[2]], dpi = 600, height = 3, width = 8.5, units = "in")
+
+fi.only.data[[1]][Sex == "Male" & variant.type == "META",paste0(Sex," Exclude non-FI OR=",sprintf("%0.2f",var.beta), " [95% CI ",sprintf("%0.2f",exp(log(var.beta)-(1.96*var.stderr))), "-",sprintf("%0.2f",exp(log(var.beta)+(1.96*var.stderr))),"]", " p=",if_else(var.p<=1e-2,sprintf("%0.1e",var.p),sprintf("%0.2f",var.p)))]
+
+```
+
 ### Tables
 
 #### Table 1
@@ -4141,6 +5195,8 @@ supptable3a <- bind_rows(supptable3a,format.table(no.male.fertility.plot[[1]],"N
 supptable3a <- bind_rows(supptable3a,format.table(no.path.cnvs.plot[[1]],"No Pathogenic CNV carriers",T,"TextOnly")) ## no pathogenic CNV carriers
 supptable3a <- bind_rows(supptable3a,format.table(no.mh.patients.plot[[1]],"No MH Patients",T,"TextOnly")) ## no MH patients
 supptable3a <- bind_rows(supptable3a,format.table(no.disease.plot[[1]],"No Disease Genes",T,"TextOnly")) ## no Disease genes
+supptable3a <- bind_rows(supptable3a,format.table(mouse.data[[1]],"No Mouse Infertility",T,"TextOnly")) ## no mouse infertility
+supptable3a <- bind_rows(supptable3a,format.table(no.same.sex.plot[[1]],"No Same Sex Individuals",T,"TextOnly")) ## no same sex individuals
 
 format.table <- function(t, var, rel.fig) {
   
@@ -4202,6 +5258,29 @@ write.table(supptable5,"figures/supplement/SuppTable5.tsv",col.names=T,row.names
 
 ```
 
+#### Table X
+
+```{r Supp table X}
+
+## HES Data
+supptable6a <- data.table(pivot_wider(hes.analysis.table[variant.type == "META",c("sex","coding","meaning","chapter","level","var.or","var.err","var.p","icd.or","icd.err","icd.p","N")],names_from=sex, values_from = starts_with(c("var","icd","N")), names_sep = "."))
+
+col.order <- c(names(supptable6a)[grepl("var|icd|N",names(supptable6a)) == F],names(supptable6a)[grepl("\\.MALE",names(supptable6a),perl = T)],names(supptable6a)[grepl("FEMALE",names(supptable6a))])
+
+setcolorder(supptable6a, col.order)
+
+write.table(supptable6a, "figures/supplement/SuppTableXa.tsv",col.names=T,row.names=F,quote=F,sep="\t")
+
+## FI Data
+supptable6b <- data.table(pivot_wider(fi.analysis.table[variant.type == "META",c("sex","coding","meaning","chapter","level","var.or","var.err","var.p","icd.or","icd.err","icd.p","N")],names_from=sex, values_from = starts_with(c("var","icd","N")), names_sep = "."))
+
+col.order <- c(names(supptable6b)[grepl("var|icd|N",names(supptable6b)) == F],names(supptable6b)[grepl("\\.MALE",names(supptable6b),perl = T)],names(supptable6b)[grepl("FEMALE",names(supptable6b))])
+
+setcolorder(supptable6b, col.order)
+
+write.table(supptable6b, "figures/supplement/SuppTableXb.tsv",col.names=T,row.names=F,quote=F,sep="\t")
+```
+
 ## 7D. Numbers Catalogue
 
 This documents all numbers in the manuscript printed in rough order. These are just replicated from above.
@@ -4243,13 +5322,30 @@ print(paste0("Number of male infertility genes: ", nrow(male.infertility.genes))
 no.male.fertility.plot[[1]][Sex == "Male" & variant.type == "META",paste0(Sex, " Fertility Gene OR=",sprintf("%0.2f",var.beta), " [95% CI ",sprintf("%0.2f",exp(log(var.beta)-(1.96*var.stderr))), "-",sprintf("%0.2f",exp(log(var.beta)+(1.96*var.stderr))),"]", " p=",if_else(var.p<=1e-2,sprintf("%0.1e",var.p),sprintf("%0.2f",var.p)))]
 paste0("")
 
+## No Mouse Infertility Genes:
+print(paste0("Number of mouse infertility genes: ", nrow(mouse.infertility.genes)))
+mouse.data[[1]][ variant.type == "META",paste0(Sex, " OR=",sprintf("%0.2f",var.beta), " [95% CI ",sprintf("%0.2f",exp(log(var.beta)-(1.96*var.stderr))), "-",sprintf("%0.2f",exp(log(var.beta)+(1.96*var.stderr))),"]", " p=",if_else(var.p<=1e-2,sprintf("%0.1e",var.p),sprintf("%0.2f",var.p)))]
+paste0("")
+
+## Male Infertility
+## HES
+hes.analysis.table[coding == "N46" & sex == "MALE" & variant.type == "META", paste0("OR=",sprintf("%0.2f",var.or), " [95% CI ",sprintf("%0.2f",exp(log(var.or)-(1.96*var.err))), "-",sprintf("%0.2f",exp(log(var.or)+(1.96*var.err))),"]", " p=",if_else(var.p<=1e-2,sprintf("%0.1e",var.p),sprintf("%0.2f",var.p)))]
+paste0("")
+## FI
+fi.analysis.table[coding == "N46" & sex == "MALE" & variant.type == "META", paste0("OR=",sprintf("%0.2f",var.or), " [95% CI ",sprintf("%0.2f",exp(log(var.or)-(1.96*var.err))), "-",sprintf("%0.2f",exp(log(var.or)+(1.96*var.err))),"]", " p=",if_else(var.p<=1e-2,sprintf("%0.1e",var.p),sprintf("%0.2f",var.p)))]
+
 ## Living with a Partner and having children:
 partner.beta.plot[[1]][sexPulse == "Male",paste0(sexPulse, " MH OR=",sprintf("%0.2f",beta), " [95% CI ",sprintf("%0.2f",exp(log(beta)-(1.96*std.error))), "-",sprintf("%0.2f",exp(log(beta)+(1.96*std.error))),"]", " p=",if_else(p.val<=1e-2,if_else(p.val <= 1e-100,"p ≤ 1e-100",sprintf("%0.1e",p.val)),sprintf("%0.2f",p.val)))]
+paste0("")
+
+## No Partner ICD-10
+hes.analysis.table[meaning == "Z60.2 Living alone" & sex == "MALE" & variant.type == "META", paste0("OR=",sprintf("%0.2f",icd.or), " [95% CI ",sprintf("%0.2f",exp(log(icd.or)-(1.96*icd.err))), "-",sprintf("%0.2f",exp(log(icd.or)+(1.96*icd.err))),"]", " p=",if_else(icd.p<=1e-2,sprintf("%0.1e",icd.p),sprintf("%0.2f",icd.p)))]
 paste0("")
 
 ## Same Sex
 same.sex[[1]][Sex == "Male" & variant.type == "META",paste0(Sex, " Same Sex sHET OR=",sprintf("%0.2f",var.beta), " [95% CI ",sprintf("%0.2f",exp(log(var.beta)-(1.96*var.stderr))), "-",sprintf("%0.2f",exp(log(var.beta)+(1.96*var.stderr))),"]", " p=",if_else(var.p<=1e-2,sprintf("%0.1e",var.p),sprintf("%0.2f",var.p)))]
 same.sex.beta.plot[[1]][,paste0(sexPulse, " Same Sex Phenotype OR=",sprintf("%0.2f",beta), " [95% CI ",sprintf("%0.2f",exp(log(beta)-(1.96*std.error))), "-",sprintf("%0.2f",exp(log(beta)+(1.96*std.error))),"]", " p=",if_else(p.val<=1e-2,if_else(p.val <= 1e-100,"p ≤ 1e-100",sprintf("%0.1e",p.val)),sprintf("%0.2f",p.val)))]
+no.same.sex.plot[[1]][Sex == "Male" & variant.type == "META",paste0(Sex," Exclude Same Sex OR=",sprintf("%0.2f",var.beta), " [95% CI ",sprintf("%0.2f",exp(log(var.beta)-(1.96*var.stderr))), "-",sprintf("%0.2f",exp(log(var.beta)+(1.96*var.stderr))),"]", " p=",if_else(var.p<=1e-2,sprintf("%0.1e",var.p),sprintf("%0.2f",var.p)))]
 paste0("")
 
 ##Fluid Intel Contrib to Fitness:
@@ -4282,9 +5378,9 @@ no.mh.patients.plot[[1]][variant.type == "META",paste0(Sex," No MH Patients OR="
 paste0("Contribution of MHTs to Fitness: ",
        sprintf("%0.1f",(((1 - model.mhq[shet == 1 & sex == 1,ratio_mid]) / (1 - model.fertility[shet == 1 & sex == 1,ratio_mid]))*100)),
        "% (",
-       sprintf("%0.1f",(((1 - model.mhq[shet == 1 & sex == 1,ratio_upper]) / (1 - model.fertility[shet == 1 & sex == 1,ratio_upper]))*100)),
-       " - ",
        sprintf("%0.1f",(((1 - model.mhq[shet == 1 & sex == 1,ratio_lower]) / (1 - model.fertility[shet == 1 & sex == 1,ratio_lower]))*100)),
+       " - ",
+       sprintf("%0.1f",(((1 - model.mhq[shet == 1 & sex == 1,ratio_upper]) / (1 - model.fertility[shet == 1 & sex == 1,ratio_upper]))*100)),
        "%)")
 paste0("")
 
@@ -4368,3 +5464,21 @@ paste0("")
 paste0("high pLI genes (≥ 0.9) have a mean sHET value of : ",sprintf("%0.3f",mean.highpLI))
 paste0("")
 ```
+
+# Testing Ground
+
+```{r}
+
+male.infert <- first.incidence.data[code == "N46", eid]
+test.table <- merge(UKBB.phenotype.data[sexPulse == 1 & has.first.incidence.data == T], variant.counts[allele.freq == 0 & type == "DEL", c("sample_id","product_sHET")], by.x = "eid", by.y = "sample_id")
+
+test.table[,has.infertility:=if_else(eid %in% male.infert, 1, 0)]
+test.table[,has.children:=if_else(children.fathered>0,1,0)]
+
+summary(glm(has.infertility ~ product_sHET + agePulse + agePulse.squared + PC1 + PC2 + PC3 + PC4 + PC5 + PC6 + PC7 + PC8 + PC9 + PC10 + PC11 + PC12 + PC13 + PC14 + PC15 + PC16 + PC17 + PC18 + PC19 + PC20 + PC21 + PC22 + PC23 + PC24 + PC25 + PC26 + PC27 + PC28 + PC29 + PC30, family = "binomial", data = test.table))
+
+```
+
+
+
+

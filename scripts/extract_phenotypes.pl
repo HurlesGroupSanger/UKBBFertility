@@ -17,7 +17,7 @@ foreach my $line (<HTML>) {
 close OUT;
 close HTML;
 
-open (FIELDS, "<rawdata/phenofiles/fields_to_extract.txt") || die "Cannot open file: $!";
+open (FIELDS, "<$ARGV[0]") || die "Cannot open file: $!";
 
 my $cols = '$' . "1" . '"\t"';
 
@@ -30,10 +30,9 @@ foreach my $line (<FIELDS>) {
   
   open (HTML, "rawdata/phenofiles/ukb40103.html") || die "Cannot open file: $!";
   foreach my $html (<HTML>) {
-    #if ($html =~ /(\d*)<\/td><td>.*field\.cgi\?id=21022".*>[1-9]+[0-9]*<\/td>/) {
-    if ($html =~ /$regex/) {
-      $cols .= '$' . ($1 + 1) . '"\t"';
-    }
+	  if ($html =~ /$regex/) {
+		  $cols .= '$' . ($1 + 1) . '"\t"';
+	  }
   }
   close HTML;
 
@@ -43,7 +42,7 @@ close FIELDS;
 
 $cols = substr($cols, 0, length($cols) - 4);
 
-my $cmd = "awk -F\"\\t\" \'\{print $cols\}\' rawdata/phenofiles/ukb40103.txt > rawdata/phenofiles/ukbb_phenotypes.txt";
+my $cmd = "awk -F\"\\t\" \'\{print $cols\}\' rawdata/phenofiles/ukb40103.txt > $ARGV[1]";
 print "$cmd\n";
 
 system($cmd);

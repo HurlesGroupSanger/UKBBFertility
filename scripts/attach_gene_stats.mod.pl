@@ -5,9 +5,10 @@ use warnings;
 use Math::BigFloat ':constant';
 use List::Util qw(product);
 
-open (PLI, "<rawdata/genelists/gnomad.v2.1.1.lof_metrics.by_gene.txt") || die "Cannot open file: $!";
-open (SHET, "<rawdata/genelists/shet.hgnc.txt") || die "Cannot open file: $!";
-open (GENELISTS, "<rawdata/genelists/gene_lists.txt") || die "Cannot open file: !";
+open (PLI, "<gnomad.v2.1.1.lof_metrics.by_gene.txt") || die "Cannot open file: $!";
+open (SHET, "<shet.hgnc.txt") || die "Cannot open file: $!";
+open (SHETOLD, "<shet.cassa.hgnc.txt") || die "Cannot open file: $!";
+open (GENELISTS, "<gene_lists.txt") || die "Cannot open file: !";
 
 my %pli;
 
@@ -34,6 +35,18 @@ foreach (<SHET>) {
 }
 
 close SHET;
+
+my %shet_old;
+
+foreach (<SHETOLD>) {
+
+	chomp $_;
+	my @data = split("\t", $_);
+	$shet_old{$data[0]} = $data[2];
+	
+}
+
+close SHETOLD;
 
 my %geneLists;
 
@@ -89,9 +102,9 @@ foreach my $line (<ATTACH>) {
 	}
 
 	if ($ct eq 'deletion' & !exists $dels{$loc}) {
-		$dels{$loc} = {plis => [], shets => [], genes => [], chr => $chr, start => $start, end => $end};
+		$dels{$loc} = {plis => [], shets => [], oldshets => [], genes => [], chr => $chr, start => $start, end => $end};
 	} elsif ($ct eq 'duplication' & !exists $dups{$loc}) {
-		$dups{$loc} = {plis => [], shets => [], genes => [], chr => $chr, start => $start, end => $end};
+		$dups{$loc} = {plis => [], shets => [], oldshets => [], genes => [], chr => $chr, start => $start, end => $end};
 	}
 
 	my $pliScore = -1;
@@ -102,22 +115,28 @@ foreach my $line (<ATTACH>) {
 	if (exists $shet{$gene} & $prim eq 'YES') {
 		$shetScore = $shet{$gene};
 	}
+	my $oldshetScore = -1;
+	if (exists $shet_old{$gene} & $prim eq 'YES') {
+		$oldshetScore = $shet_old{$gene};
+	}
 	
 	if ($pliScore != -1 || $shetScore != -1) {
 		if ($csq =~ /transcript_ablation/ || ($csq =~ /coding_sequence_variant/ && $csq =~ /feature_truncation/)) {
 			push (@{$dels{$loc}{genes}}, $gene);
 			push (@{$dels{$loc}{plis}}, $pliScore);
 			push (@{$dels{$loc}{shets}}, $shetScore);
+			push (@{$dels{$loc}{oldshets}}, $oldshetScore);
 		} elsif ($csq =~ /transcript_amplification/ || ($csq =~ /coding_sequence_variant/ && $csq =~ /feature_elongation/)) {
 			push (@{$dups{$loc}{genes}}, $gene);
 			push (@{$dups{$loc}{plis}}, $pliScore);
 			push (@{$dups{$loc}{shets}}, $shetScore);
+			push (@{$dups{$loc}{oldshets}}, $oldshetScore);
 		}
 	}
 }
 
 
-my @header = ('chr', 'start', 'end', 'ct', 'genes', 'plis', 'shets', 'product_sHET');
+my @header = ('chr', 'start', 'end', 'ct', 'genes', 'plis', 'shets', 'product_sHET','old_product_sHET');
 foreach my $list (sort keys %geneLists) {
 	push (@header, "product_sHET_no_" . $list);
 }
@@ -148,6 +167,9 @@ sub printResults {
 			
 			my $prod = calcShet(\@{$$hash{$sites}{genes}},\@{$$hash{$sites}{shets}});
 			push (@printer, $prod);
+
+			my $oldProd = calcShet(\@{$$hash{$sites}{genes}},\@{$$hash{$sites}{oldshets}});
+			push(@printer, $oldProd);
 			
 			foreach my $list (sort keys %geneLists) {
 				$prod = calcShetList(\@{$$hash{$sites}{genes}},\@{$$hash{$sites}{shets}},\%{$geneLists{$list}});
@@ -156,7 +178,7 @@ sub printResults {
 		} else {
 			push (@printer, (0, 0, "NA", "NA", "NA"));
 			
-			push (@printer, 0); # product_sHET
+			push (@printer, (0, 0)); # product_sHET
 			
 			foreach my $list (sort keys %geneLists) {
 				push (@printer, 0);

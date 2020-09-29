@@ -140,7 +140,7 @@ cd annotations/hg38/gnomad/
 bcftools query https://storage.googleapis.com/gnomad-public/release/3.0/vcf/genomes/gnomad.genomes.r3.0.sites.vcf.bgz -f "%CHROM\t%POS\t%REF\t%ALT\t%FILTER\t%INFO/AF_nfe\n" > gnomad.tsv
 
 ## Offline version:
-## Obviously change the path if your local download:
+## Obviously change the path to your local download:
 bcftools query /path/to/gnomadv3/gnomad.genomes.r3.0.sites.vcf.bgz -f "%CHROM\t%POS\t%REF\t%ALT\t%FILTER\t%INFO/AF_nfe\n" > gnomad.tsv
 
 ## Remove 'chr' prefix, bgzip, and tabix index.
