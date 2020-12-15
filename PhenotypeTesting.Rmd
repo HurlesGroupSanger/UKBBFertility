@@ -10,7 +10,7 @@ output:
 
 # 1. Startup and Introduction
 
-This document contains UKBB data and comparisons between and within this data to the trait of interest, Fertility. If using data produced by this repo, please cite [our manuscript](https://www.biorxiv.org/content/10.1101/2020.05.26.116111v1).
+This document contains UKBB data and comparisons between and within this data to the trait of interest, Fertility. If using data produced by this repo, please cite [our manuscript](https://www.biorxiv.org/content/10.1101/2020.05.26.116111v2).
 
 **Big Note**: The first part of this document involves running scripts to generate text files required for downstream analysis. _PLEASE_ start there and make sure all scripts ran successfully. All scripts for this section are available in the folder `./scripts/` and _will not_ run as part of this document. There are two additional resources that you need to download -- the OMIM morbid map, which requires registration and DDG2P. See the section [on disease genes](#disease_genes) below.
 
