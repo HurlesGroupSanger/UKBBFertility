@@ -48,6 +48,7 @@ This project requires the following packages/dependencies:
     + ROCR - Builds ROC curves
     + cvAUC - Determines CI for AUC from ROCR
     + gdata - Allows for accurate random sampling when making training sets for Random Forest
+    + rcompanion - Used for calculating Naglekerke's pseudo $r^2$ for logistic regression
 * Perl:
     + None
 * Java:

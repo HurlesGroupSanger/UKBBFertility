@@ -8,6 +8,6 @@
 	<classpathentry kind="src" path="src"/>
 	<classpathentry kind="lib" path="/Users/eg15/git/MELT/ExternalJARs/commons-cli-1.2.jar"/>
 	<classpathentry kind="lib" path="/Users/eg15/git/MELT/ExternalJARs/commons-math3-3.3.jar" sourcepath="/Users/eg15/Downloads/commons-math3-3.6.1-bin.zip"/>
-	<classpathentry kind="lib" path="/Users/eg15/git/MELT/ExternalJARs/htsjdk-2.21.2-2.jar" sourcepath="/Users/eg15/Downloads/htsjdk/src/main"/>
+	<classpathentry kind="lib" path="/Users/eg15/git/MELT/ExternalJARs/htsjdk-2.22.0.jar" sourcepath="/Users/eg15/git/htsjdk/src/main"/>
 	<classpathentry kind="output" path="bin"/>
 </classpath>

@@ -27,7 +27,7 @@ public class EvaluateIndex {
 	
 	public static String returnAnnotationPrefix(File vcfFile) {
 				
-		Matcher nameMatcher = Pattern.compile("(\\S+)\\.vcf\\.gz").matcher(vcfFile.getAbsolutePath());
+		Matcher nameMatcher = Pattern.compile("(\\S+)\\.(vcf|bed)\\.gz").matcher(vcfFile.getAbsolutePath());
 		String annotationPrefix;
 		
 		if (nameMatcher.matches()) {
@@ -54,7 +54,7 @@ public class EvaluateIndex {
 		} else {
 			
 			annotationPrefix = null;
-			System.err.println("VCF file is not named properly as *.vcf.gz! Exiting...");
+			System.err.println("VCF|BED file is not named properly as *.vcf|bed.gz! Exiting...");
 			System.exit(1);
 			
 		}

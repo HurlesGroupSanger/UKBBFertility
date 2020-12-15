@@ -7,14 +7,13 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
-import htsjdk.samtools.util.CloseableIterator;
 import htsjdk.variant.variantcontext.Allele;
 import htsjdk.variant.variantcontext.VariantContext;
-import htsjdk.variant.vcf.VCFFileReader;
 import snvcounter.parsers.AnnotationParser;
 import snvcounter.parsers.AnnotationParser.AnnotationType;
 import snvcounter.parsers.VEPAnnotator;
 import snvcounter.utilities.EvaluateIndex;
+import snvcounter.utilities.MultiVCFIterator;
 import snvcounter.utilities.SNVCounterOptions.GenomeVersion;
 import snvcounter.utilities.SNVCounterOptions.OptionHolder;
 
@@ -30,19 +29,15 @@ public class SNVCounter {
 	
 	public void doWork() throws Exception {
 
-		// First get the gene that we are interested in:
-		// Just to note, gene list provided here is all genes with a pLI/sHET score
-		File geneList = options.getGeneList();
-		int jobNumber = options.getGeneNumber();
+		// First get the gene and VCF file that we are interested in:
+		// Just to note, genes queried here are only those with a pLI/sHET score
 		GenomeVersion genomeVers = options.getGenomeVersion();
+		Gene gene = options.getGene();
 		
-		Gene gene = new Gene(geneList, jobNumber, genomeVers);
-		
-		// Open the VCF file we care about
+		// VCF file – this is JUST to get annotation files, the actual iteration over variants is handled via another method
+		// to accommodate genes which overlap multiple file chunks.
 		File vcfFile = options.getVcfFile();
-		File vcfFileIndex = EvaluateIndex.returnIndex(vcfFile);
-		VCFFileReader vcfReader = new VCFFileReader(vcfFile, vcfFileIndex);
-				
+		
 		// Sample IDs are here.
 		Set<String> sampleIDs = options.getSampleIDs();
 		
@@ -97,7 +92,7 @@ public class SNVCounter {
 		VEPAnnotator vep = new VEPAnnotator(vepDict, AnnotationType.VEP, gene);		
 		
 		// Now go through the VCF file by querying and attach information to each variant!
-		CloseableIterator<VariantContext> vcfIterator = vcfReader.query(gene.getChr(), gene.getStart(), gene.getEnd());
+		MultiVCFIterator vcfIterator = options.getVCFIterator();
 				
 		while (vcfIterator.hasNext()) {
 			
@@ -158,7 +153,6 @@ public class SNVCounter {
 		vep.close();
 		pext.close();
 		vcfIterator.close();
-		vcfReader.close();
 		outWriter.close();
 		
 	}

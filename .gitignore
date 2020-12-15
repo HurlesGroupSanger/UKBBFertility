@@ -1,5 +1,5 @@
 # Nothing from our testing folder:
-rawdata_test/
+rawdata_test*/
 rawdata.testing*.tar.gz
 rawdata_real/
 

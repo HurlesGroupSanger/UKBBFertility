@@ -15,12 +15,15 @@ import org.apache.commons.cli.CommandLineParser;
 import org.apache.commons.cli.Option;
 import org.apache.commons.cli.Options;
 
+import snvcounter.annotator.Gene;
+import snvcounter.annotator.Gene.GeneNotFoundException;
+
 public class SNVCounterOptions {
 
 	private OptionHolder holder;
 	
 	// Is just a holder/parser for command-line options
-	public SNVCounterOptions(String args[]) throws IOException {
+	public SNVCounterOptions(String args[]) throws IOException, GeneNotFoundException {
 		
 		Options options = buildOptions();
 		holder = setOptions(args, options);
@@ -57,7 +60,7 @@ public class SNVCounterOptions {
 		
 	}
 	
-	private OptionHolder setOptions (String args[], Options options) throws IOException {
+	private OptionHolder setOptions (String args[], Options options) throws IOException, GeneNotFoundException {
 		
 		CommandLineParser parser = new BasicParser();
 		CommandLine cmd = null;
@@ -70,12 +73,13 @@ public class SNVCounterOptions {
 			System.exit(1);
 		}
 	
-		OptionHolder holder = new OptionHolder();
+		OptionHolder holder = new OptionHolder(cmd.getOptionValue("gene"), 
+				cmd.getOptionValue("genelist"),
+				cmd.getOptionValue("genomeversion"),
+				cmd.getOptionValue("vcf")
+				);
 		
-		holder.setGeneList(cmd.getOptionValue("genelist"));
-		holder.setGeneNumber(cmd.getOptionValue("gene"));
-		holder.setGenomeVersion(cmd.getOptionValue("genomeversion"));
-		holder.setVcfFile(cmd.getOptionValue("vcf"));
+		;
 		holder.setSampleIDs(cmd.getOptionValue("samples"));
 		holder.setMafFilter(cmd.getOptionValue("maf"));
 		holder.setOutputDir(cmd.getOptionValue("outdir"));
@@ -90,22 +94,29 @@ public class SNVCounterOptions {
 		private File geneList;
 		private int geneNumber;
 		private GenomeVersion genomeVersion;
+		private Gene gene;
 		private File vcfFile;
+		private boolean isVcfListFile;
+		
+		private MultiVCFIterator vcfIterator;
+		
 		private Set<String> sampleIDs;
 		private double mafFilter;
 		private File outputDir;
 		private File rootDir;
 		
-		public OptionHolder() {
+		public OptionHolder(String geneList, String geneString, String genomeVersionString, String vcfFileString) throws IOException, GeneNotFoundException {
 			
-			super();
+			setGeneList(geneList);
+			setGeneNumber(geneString);
+			setGenomeVersion(genomeVersionString);
+			setVcfFile(vcfFileString);
+			setGene();
+			buildVCFIterator();
 			
 		}
 
-		public File getGeneList() {
-			return geneList;
-		}
-		public void setGeneList(String geneList) {
+		private void setGeneList(String geneList) {
 			
 			File geneFile = new File(geneList);
 			if (geneFile.exists()) {
@@ -116,11 +127,7 @@ public class SNVCounterOptions {
 			}
 			
 		}
-
-		public int getGeneNumber() {
-			return geneNumber;
-		}
-		public void setGeneNumber(String geneString) {
+		private void setGeneNumber(String geneString) {
 			
 			try {
 				this.geneNumber = Integer.parseInt(geneString);
@@ -133,7 +140,7 @@ public class SNVCounterOptions {
 		public GenomeVersion getGenomeVersion() {
 			return genomeVersion;
 		}
-		public void setGenomeVersion(String genomeVersionString) {
+		private void setGenomeVersion(String genomeVersionString) {
 			GenomeVersion genomeVersion = searchEnum(GenomeVersion.class, genomeVersionString);
 			if (genomeVersion != null) {
 				this.genomeVersion = genomeVersion;
@@ -143,14 +150,28 @@ public class SNVCounterOptions {
 			}
 			
 		}
-
-		public File getVcfFile() {
-			return vcfFile;
+		
+		public Gene getGene() {
+			return gene;
 		}
-		public void setVcfFile(String vcfFileString) {
+		private void setGene() throws IOException, GeneNotFoundException {
+			gene = new Gene(geneList, geneNumber, genomeVersion);
+		}
+		
+		public File getVcfFile() throws IOException {
+			
+			return vcfFile;
+			
+		}	
+		private void setVcfFile(String vcfFileString) {
 			
 			File vcfFile = new File(vcfFileString);
 			if (vcfFile.exists()) {
+				if (vcfFile.getName().contains("vcf.gz")) {
+					isVcfListFile = false;
+				} else {
+					isVcfListFile = true;
+				}
 				this.vcfFile = vcfFile;
 			} else {
 				System.out.println("VCF file given by -vcf does not exist... Exiting!");
@@ -216,7 +237,14 @@ public class SNVCounterOptions {
 			}
 			this.rootDir = rootDir;
 		}
-				
+			
+		public void buildVCFIterator() throws IOException {
+			vcfIterator = new MultiVCFIterator(vcfFile, isVcfListFile, gene);
+		}
+		public MultiVCFIterator getVCFIterator() {
+			return vcfIterator;
+		}
+		
 	}
 	
 	private static Set<String> parseSampleIDs (File sampleNameFile) throws IOException {

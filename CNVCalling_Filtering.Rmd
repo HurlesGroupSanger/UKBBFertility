@@ -1,7 +1,7 @@
 ---
 title: "CNV Calling and Filtering"
 author: "Eugene Gardner"
-date: "05 May 2020"
+date: "03 December 2020"
 output: 
   html_document:
     toc: true
@@ -282,9 +282,11 @@ paste("Total number of CNVs loaded:", nrow(annotated.cnvs))
 
 ## 5B. Load Annotated UKBB CNV calls
 
+This file is identical to the one loaded above for INTERVAL. Please see the head file there as an example.
+
 ```{r Load merged UKBB CNV calls}
 
-ukbb.annotated.cnvs <- fread("rawdata/cnvexamples/ukbb.batchAll.annotated.for_testing.txt")
+ukbb.annotated.cnvs <- fread("rawdata/cnvexamples/UKBB.with_bileve.with_batch18.annotated.txt")
 setnames(ukbb.annotated.cnvs,"#chr","chr")
 
 ukbb.annotated.cnvs[,ct:=mapply(assign.ct,Copy_Number)]
@@ -657,7 +659,7 @@ train.basic <- function(copy.type) {
   training.set.size<-as.numeric(nrow(annotated.cnvs.ct) / 2)
   
   training<-sample_n(annotated.cnvs.ct,training.set.size)
-  training.rows<-training[,c("row.num")]
+  training.rows<-training[,row.num]
   test<-annotated.cnvs.ct[!row.num %in% training.rows][Max_Log_BF!=0]
   
   test<-run.models(test,training)
@@ -675,7 +677,7 @@ train.random <- function(copy.type) {
   training.set.size<-as.numeric(nrow(annotated.cnvs.ct) / 2)
 
   training<-sample_n(annotated.cnvs.ct,training.set.size)
-  training.rows<-training[,c("row.num")]
+  training.rows<-training[,row.num]
   test<-annotated.cnvs.ct[!row.num %in% training.rows][Max_Log_BF!=0]
   
   test<-run.models(test,training)
@@ -934,22 +936,19 @@ Currently using 95% Specificity in leave one out model performed in section 4D t
 calculate.cutoff <- function(cutoff, data) {
 
     ## Overall Sens/Specificity from leave one out
-    combined.DUP.DEL <- bind_rows(DUP.plot[[1]],DEL.plot[[1]])
-    combined.DUP.DEL <- data.table(score=c(combined.DUP.DEL[training.type=="basic" & model == "RandomForest",a],
-                                           combined.DUP.DEL[training.type=="basic" & model == "LogRegression",a],
-                                           combined.DUP.DEL[model=="OS",a]),
-                                   metric=c(rep("rf.wes.binary",length(combined.DUP.DEL[training.type=="basic" & model == "RandomForest",a])),
-                                            rep("QS.gardner",length(combined.DUP.DEL[training.type=="basic" & model == "LogRegression",a])),
-                                            combined.DUP.DEL[model=="OS",training.type]),
-                                   linetype=c(rep(1,length(combined.DUP.DEL[training.type=="basic" & model == "RandomForest",a])),
-                                            rep(1,length(combined.DUP.DEL[training.type=="basic" & model == "LogRegression",a])),
-                                            rep(1,length(combined.DUP.DEL[model=="OS",training.type]))),
-                                   spec=c(combined.DUP.DEL[training.type=="basic" & model == "RandomForest",x],
-                                          combined.DUP.DEL[training.type=="basic" & model == "LogRegression",x],
-                                          combined.DUP.DEL[model=="OS",x]),
-                                   sens=c(combined.DUP.DEL[training.type=="basic" & model == "RandomForest",y],
-                                          combined.DUP.DEL[training.type=="basic" & model == "LogRegression",y],
-                                          combined.DUP.DEL[model=="OS",y]))
+    combined.DUP.DEL <- bind_rows(DUP.plot[[1]][training.type == "basic"],DEL.plot[[1]][training.type == "basic"])
+    combined.DUP.DEL <- combined.DUP.DEL[,c("a","x","y")]
+    setnames(combined.DUP.DEL,c("a","x","y"),c("score","spec","sens"))
+    combined.DUP.DEL[,metric:="rf.wes.binary"]
+    
+    # combined.DUP.DEL <- data.table(score=c(combined.DUP.DEL[training.type=="basic" & model == "RandomForest",a],
+    #                                        combined.DUP.DEL[model=="OS",a]),
+    #                                metric=c(rep("rf.wes.binary",length(combined.DUP.DEL[training.type=="basic" & model == "RandomForest",a])),
+    #                                         combined.DUP.DEL[model=="OS",training.type]),
+    #                                spec=c(combined.DUP.DEL[training.type=="basic" & model == "RandomForest",x],
+    #                                       combined.DUP.DEL[model=="OS",x]),
+    #                                sens=c(combined.DUP.DEL[training.type=="basic" & model == "RandomForest",y],
+    #                                       combined.DUP.DEL[model=="OS",y]))
     
     ## Calculate cutoffs based on 90% sensitivity in LOO model for both DEL and DUP in Random Forest, Log Regression, and Macé and generate sensitivity/specificity values
     calcd.cutoffs <- data.table(ct=c(rep(c("DEL","DUP"),1)),
@@ -1029,7 +1028,11 @@ calculate.cutoff <- function(cutoff, data) {
     print(calcd.cutoffs)
 
     ## Final Sensitivity v Specificity
-    print(ggplot() + geom_text(data=calcd.cutoffs,aes(spec,sens,colour=ct,label=metric),size=6) + geom_text(data=calcd.cutoffs.os,aes(spec.mean,sens.mean,colour=ct,label=training.type),size=6) +            scale_colour_manual(values=c(del.line,dup.line)) + scale_x_reverse(lim=c(1,0),name="Specificity") + scale_y_continuous(lim=c(0,1),name="Sensitivity") + theme)
+    print(ggplot() + geom_text(data=calcd.cutoffs,aes(spec,sens,colour=ct,label=metric),size=6) +
+            geom_text(data=calcd.cutoffs.os,aes(spec.mean,sens.mean,colour=ct,label=training.type),size=6) +      
+            scale_colour_manual(values=c(del.line,dup.line)) + 
+            scale_x_reverse(lim=c(1,0),name="Specificity") + 
+            scale_y_continuous(lim=c(0,1),name="Sensitivity") + theme)
     
     return(list(calcd.cutoffs,calcd.cutoffs.os))
     
@@ -1135,9 +1138,11 @@ gunzip -f rawdata/genelists/gnomad.v2.1.1.lof_metrics.by_gene.txt.gz
 ```{bash Generate sHET gene lists}
 
 perl -ane 'chomp $_; @F = split("\t", $_); print "$F[0]\t$F[7]\n";' rawdata/genelists/shet.weghorn.txt > rawdata/genelists/shet.processed.weghorn.txt
+perl -ane 'chomp $_; @F = split("\t", $_); print "$F[0]\t$F[1]\n";' rawdata/genelists/shet.cassa.txt > rawdata/genelists/shet.processed.cassa.txt
 
 ## sHET gene lists (have to attach ENSG):
 scripts/matcher.pl -file1 rawdata/genelists/hg19.genes.txt -col1 5 -file2 rawdata/genelists/shet.processed.weghorn.txt -r | perl -ane 'chomp $_; print "$F[2]\t$F[0]\t$F[1]\t$F[6]\n";' > rawdata/genelists/shet.hgnc.txt
+scripts/matcher.pl -file1 rawdata/genelists/hg19.genes.txt -col1 5 -file2 rawdata/genelists/shet.processed.cassa.txt -r | perl -ane 'chomp $_; print "$F[2]\t$F[0]\t$F[1]\t$F[6]\n";' > rawdata/genelists/shet.cassa.hgnc.txt
 ```
 
 ### Disease Genes
@@ -1154,7 +1159,7 @@ This is a list of genes confirmed as playing a role in male infertility from [Ma
 
 ```{bash Get Male Infertility Genes}
 
-curl -L -o rawdata/genelists/male_infertility_genes.xlsx "https://oup.silverchair-cdn.com/oup/backfile/Content_public/Journal/humrep/34/5/10.1093_humrep_dez022/2/dez022_supplementary_tables_siii_-_svi_final.xlsx?Expires=1591021841&Signature=Fs~qzUue5gM-9WRPnYlSzzQ1kQpryWdxzLqW1Yx74QHgzCVgGzeuNyf2ZhyqDRTUSmWoaPTHi-O~PXLJRsW~jsJKq8YVr-mGYlbJ9hb40YJIulotNzUiY1mIRYyS7MTvncojcWo9xwEfB~-KNeguJbfX7dv6f4RgDtHX1ne59zK9kueOK-jJRrzrW73Xb07JtMuGM3ChvbFAObx4-9cPg44U~JzEERrAoBZjkUuqt1tEQ2EM70Yy26FL-v34-P2nu3BtV3hulfWfk9dzdMP-hRupRkwfFJ3RaaWU5iboHwT9srQlRMEkJ0XHBp8MeeImXgFJAxzC3EPYhU4YgYpa7w__&Key-Pair-Id=APKAIE5G5CRDK6RD3PGA"
+curl -L -o rawdata/genelists/male_infertility_genes.xlsx "https://oup.silverchair-cdn.com/oup/backfile/Content_public/Journal/humrep/34/5/10.1093_humrep_dez022/2/dez022_supplementary_tables_siii_-_svi_final.xlsx?Expires=1610104943&Signature=aNNfVC~2fDVGJtkTwMipconDNKJ-wBpIAuirlY9Vlb10rdiEhGSlRiV2w01eiRwPdg~c7N6j~5Vvle-XbWzPs8hrNnDJkTZSzTJSzAY8rJJcGsvQrrZrmakP87O9iIEuKvsBqCyhLU04osczMLaWVRL7oSX~MmBiPNOgWIOUs7nQodIhFAGf9gyscadyUJ9q3yL5ptybEOcd2VbkeDNuHgRCWuhbE1KB7LQStWbRp6gxXR6JMf8qSHWxknccaxBTdhQ3Pk0bLYL3dxOjr2PYikPlogfO98JF2HgakoJmumx-zJ1wh~4RuB9tJykz3or6FMfOqJLSOiFPF9XVEUJ0zQ__&Key-Pair-Id=APKAIE5G5CRDK6RD3PGA"
 
 ```
 
@@ -1195,7 +1200,7 @@ This analysis proceeds in three basic steps:
     + **Note**: You need to make sure you edit this script to set appropriate paths to your own file system!
 3. Generate a tab delimited file that can be used when running `PhenotypeTesting.Rmd` (`scripts/attach_gene_stats.pl`). This calculates:
     + Number of high pLI/s~het~ genes per locus
-    + s~het~ scores without disease genes or male infertility genes
+    + s~het~ scores without disease genes, male infertility genes, or mouse infertility genes
     + s~het~ scores given by the formula:
     
     $$s_{het[i,v]}=1-\prod_{g} (1-s_{het[i,v,g]})$$
@@ -1218,10 +1223,10 @@ scripts/annotate_vep.pl <1-457>
 
 ## 3. Merge the annotations with gene level information and calculate sHET scores:
 # Make a quick file list for this script to do male infertility/disease gene scores:
-echo -e "rawdata/genelists/diseaseGenes.txt\nrawdata/genelists/male_infertility_genes.txt" > rawdata/genelists/gene_lists.txt
+echo -e "rawdata/genelists/diseaseGenes.txt\nrawdata/genelists/male_infertility_genes.txt\nrawdata/genelists/mouse_infertility_genes.annotated.txt" > rawdata/genelists/gene_lists.txt
 
 # This just makes a one-liner runs all the files at once, can do it however you like
-perl -e 'for (1..457) {my $num = sprintf("%03d", $_); print "./attach_gene_stats.mod.pl vep_input/vep_annotation.$num.txt > vep_input_revision/vep_parsed.$num.txt;\n";}' | bash
+perl -e 'for (1..457) {my $num = sprintf("%03d", $_); print "./attach_gene_stats.pl vep_input/vep_annotation.$num.txt > vep_input_revision/vep_parsed.$num.txt;\n";}' | bash
 
 ## Cat it all together!
 cat vep_input_revision/vep_parsed.*.txt | sort -k 1,1 -k2,2n > cnv_vep_parsed.revision.sorted.bed

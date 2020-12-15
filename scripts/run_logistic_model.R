@@ -1,5 +1,9 @@
 #!/software/hgi/installs/anaconda3/envs/hgi_base/bin/Rscript --vanilla
 
+## Note! It is not intended that you use this file directly as it is adapted to Sanger's LSF submission
+## system (See callouts for LSB_JOBINDEX). It is intended that you modify this script to fit your job 
+## submission sytem.
+
 library(data.table)
 library(tidyr)
 library(dplyr)
@@ -55,15 +59,15 @@ run.lm <- function(code, node, sex, variant.type) {
   lm.table[,has.disorder:=if_else(eid %in% indv.with.code,1,0)]
   
   if (variant.type == "DEL") {
-    lm.table[has.wes == F]
+    lm.table <- lm.table[has.wes == F]
   }
   
   if (sex == "MALE") {
     lm.table <- lm.table[sexPulse == 1 & !is.na(children.fathered)]
-    lm.table[,childless:=if_else(children.fathered > 0,1,0)]
+    lm.table[,has.children:=if_else(children.fathered > 0,1,0)]
   } else if (sex == "FEMALE") {
     lm.table <- lm.table[sexPulse == 2 & !is.na(live.births)]
-    lm.table[,childless:=if_else(live.births > 0,1,0)]
+    lm.table[,has.children:=if_else(live.births > 0,1,0)]
   }
   
   if (nrow(lm.table[has.disorder == 1]) < 2) {
@@ -78,7 +82,7 @@ run.lm <- function(code, node, sex, variant.type) {
   } else {
   
     covariates <- c("product_sHET","has.disorder","sexPulse","agePulse","agePulse.squared","PC1","PC2","PC3","PC4","PC5","PC6","PC7","PC8","PC9","PC10","PC11","PC12","PC13","PC14","PC15","PC16","PC17","PC18","PC19","PC20","PC21","PC22","PC23","PC24","PC25","PC26","PC27","PC28","PC29","PC30")
-    lm.formula <- as.formula(paste("childless",paste(covariates,collapse = "+"),sep="~"))
+    lm.formula <- as.formula(paste("has.children",paste(covariates,collapse = "+"),sep="~"))
     
     lm.model <- glm(lm.formula, data = lm.table, family = "binomial")
     lm.out <- data.table(tidy(lm.model))

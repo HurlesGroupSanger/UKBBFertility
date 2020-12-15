@@ -1,10 +1,11 @@
-#!/usr/bin/env perl
+#!/usr/bin/perl
 
 use strict;
 use warnings;
+use Data::Dumper;
 
 open (ICD, "<rawdata/phenofiles/ICD10.data.txt") || die "Cannot open file: $!";
-open (OUT, ">rawdata/phenofiles/ICD10.data.processed.txt") || die "Cannot make file: $!";
+open (OUTPUT, ">rawdata/phenofiles/ICD10.data.processed.txt") || die "Cannot make file: $!";
 
 my %codes = (F20 => 'scizo',
 			 F200 => 'scizo',
@@ -76,7 +77,7 @@ my %codes = (F20 => 'scizo',
 			 F428 => 'ocd',
 			 F429 => 'ocd',
 			 F411 => 'gen_anxiety',
-			 F202 => 'phobia',
+			 F402 => 'phobia',
 			 F60 => 'gen_personality',
 			 F600 => 'gen_personality',
 			 F601 => 'gen_personality',
@@ -91,6 +92,34 @@ my %codes = (F20 => 'scizo',
 			 F61 => 'gen_personality',
 			 F410 => 'panic_attacks',
 			 F900 => 'add',
+			 F80 => 'developmental_disorder',
+			 F800 => 'developmental_disorder',
+			 F801 => 'developmental_disorder',
+			 F802 => 'developmental_disorder',
+			 F803 => 'developmental_disorder',
+			 F809 => 'developmental_disorder',
+			 F81 => 'developmental_disorder',
+			 F810 => 'developmental_disorder',
+			 F812 => 'developmental_disorder',
+			 F819 => 'developmental_disorder',
+			 F82 => 'developmental_disorder',
+			 F89 => 'developmental_disorder',
+			 F70 => 'developmental_disorder',
+			 F700 => 'developmental_disorder',
+			 F701 => 'developmental_disorder',
+			 F708 => 'developmental_disorder',
+			 F709 => 'developmental_disorder',
+			 F71 => 'developmental_disorder',
+			 F711 => 'developmental_disorder',
+			 F719 => 'developmental_disorder',
+			 F72 => 'developmental_disorder',
+			 F729 => 'developmental_disorder',
+			 F78 => 'developmental_disorder',
+			 F780 => 'developmental_disorder',
+			 F789 => 'developmental_disorder',
+			 F79 => 'developmental_disorder',
+			 F790 => 'developmental_disorder',
+			 F799 => 'developmental_disorder',
 			 N46 => 'infertility'
 	);
 
@@ -131,7 +160,8 @@ foreach my $indv (<ICD>) {
 						  gen_personality => 0,
 						  panic_attacks => 0,
 						  add => 0,
-						  infertility => 0};
+						  infertility => 0,
+						  developmental_disorder => 0};
 						  	
 		## Process additions
 		for (my $x = 1; $x < scalar(@data); $x++) {
@@ -146,7 +176,7 @@ foreach my $indv (<ICD>) {
 
 my @header = ('eid', sort keys %{$results{$eid}});
 
-print OUT join("\t", @header) . "\n";
+print OUTPUT join("\t", @header) . "\n";
 
 foreach my $indv (keys %results) {
 
@@ -156,9 +186,9 @@ foreach my $indv (keys %results) {
 		push (@printer,$results{$indv}{$key});
 	}
 
-	print OUT join("\t", @printer) . "\n";
+	print OUTPUT join("\t", @printer) . "\n";
 
 }
 
 close ICD;
-close OUT;
+close OUTPUT;

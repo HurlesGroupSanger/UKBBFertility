@@ -1,7 +1,7 @@
 ---
 title: "SNV Calling and Filtering"
 author: "Eugene Gardner"
-date: "05 May 2020"
+date: "03 December 2020"
 output: 
   html_document:
     toc: true
@@ -249,8 +249,8 @@ As the CADD library files that were created above do not contain most InDel scor
 As CADD takes a good amount of time, this code is partially parallelized by the script `scripts/run_cadd.pl`.
 
 ```{bash run CADD supplemental annotations, eval = F}
-## Go to VQSR directory:
-cd vcfs/ukbb_plink.vcf.vqsr/
+## Go to CADD directory:
+cd vcfs/ukbb_plink.vcf.cadd/
 
 ## Quicker to just pull the InDels out of our pre-processed 'VQSR' file above:
 ## This creates a master 'VCF' file of InDels that we need to annotate
