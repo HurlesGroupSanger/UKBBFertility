@@ -78,7 +78,7 @@ public class Genotyper {
 				AN += 2;
 				
 				// Apply Genotype Level Filters
-				if (DP >= 7 && adPval > 0.001 && GQ >= 20) {
+				if (DP >= 7 && adPval > 0.001 && (GQ >= 20 || alleleCount == 2)) {
 					AC += alleleCount;
 									
 					if (alleleCount > 0) {

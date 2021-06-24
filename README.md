@@ -49,6 +49,7 @@ This project requires the following packages/dependencies:
     + cvAUC - Determines CI for AUC from ROCR
     + gdata - Allows for accurate random sampling when making training sets for Random Forest
     + rcompanion - Used for calculating Naglekerke's pseudo r-squared for logistic regression
+    + lubridate - For measuring time between patient birth/ICD-code incidence
 * Perl:
     + None
 * Java:
@@ -57,7 +58,8 @@ This project requires the following packages/dependencies:
     + Apache Commons Exec
     + HTSJDK
 * Python
-    + None
+    + scipy
+    + pandas
 
 # Citing this Repo
 

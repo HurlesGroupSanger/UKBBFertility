@@ -56,7 +56,7 @@ public class SNVCounter {
 		 * 4. PEXT = annotations/<genomeVers>/pext/pext.tsv.gz
 		 * 5. VQSR = located with the VCF file
 		 * 6. VEP = located with the VCF file
-		 * 7. Supp CADD = located with the VCF file 
+		 * 7. Supp CADD = located with the VCF file
 		 * 
 		 * Build those parsers here:
 		 * Actual instructions on building the files is in my RMarkdown for this project.
@@ -97,28 +97,43 @@ public class SNVCounter {
 		while (vcfIterator.hasNext()) {
 			
 			VariantContext currentVar = vcfIterator.next();
+			// This is necessary due to a weird quirk of htsjdk, where I cannot query the VCF prior to it starting...
+			if (currentVar.getStart() > gene.getEnd() + 10) {
+				break;
+			}
 			List<Allele> altAlleles = currentVar.getAlternateAlleles();
 			
 			// Go through each allele properly:
 			for (int alleleNum = 0; alleleNum < altAlleles.size(); alleleNum++) {
 				
-				PrintableVariant printableVar = new PrintableVariant(currentVar, genomeVers, alleleNum, caddRecovery);
-
+				PrintableVariant printableVar = new PrintableVariant(currentVar, genomeVers, alleleNum);
+								
 				if (!printableVar.getAltBaseString().equals("*")) { // Remove any star alleles from analysis...
 	
 					// Annotate VEP
 					printableVar.setVepAnnotation(vep.getVEPAnnotation(printableVar));
 								
+					if (!printableVar.isRelevant()) {
+						continue;
+					}
+					
 					// Have to do VQSR and VEP first since they use the VCF annotation and we have to left correct SNVs below...
 					// Annotate VQSR AF
 					printableVar.setVQSR(vqsr.getAnnotation(printableVar));
-											
-					// Method left corrects SNVs that are multiallelic with an InDel as required by the following annotations:
-					printableVar.fixEqualLengthSNV();
-					
-					// Annotate CADD score
-					printableVar.setCadd(cadd.getAnnotation(printableVar));
-					
+								
+					// This is goofy due to how UKBB vars are stored, but to do CADD we custom annotate InDels based on their REF/ALT in the VCF (which isn't left corrected).
+					// So we need to pull InDel/SNV information from separate files...
+					// leftCorrectVariant Method left corrects variants as required by the some of the following annotations:
+					if (printableVar.getRefBaseString().length() != printableVar.getAltBaseString().length()) {
+						// Annotate CADD score
+						printableVar.setCadd(caddRecovery.getAnnotation(printableVar));
+						printableVar.leftCorrectVariant();
+					} else {
+						printableVar.leftCorrectVariant();
+						// Annotate CADD score
+						printableVar.setCadd(cadd.getAnnotation(printableVar));						
+					}
+									
 					// Annotate MPC score
 					printableVar.setMpc(mpc.getAnnotation(printableVar));
 											
@@ -127,10 +142,10 @@ public class SNVCounter {
 					
 					// Annotate PEXT
 					printableVar.setPextScore(pext.getAnnotation(printableVar));
-										
+
 					// Apply Very Lenient VQSR Filter Here
 					if(printableVar.isPrintable()) {
-												
+
 						Genotyper genotyper = new Genotyper(printableVar, sampleIDs);
 						
 						if (genotyper.getAF() < afFilter) {
@@ -148,13 +163,14 @@ public class SNVCounter {
 		
 		mpc.close();
 		cadd.close();
+		caddRecovery.close();
 		gnomad.close();
 		vqsr.close();
 		vep.close();
 		pext.close();
 		vcfIterator.close();
 		outWriter.close();
-		
+				
 	}
 	
 }

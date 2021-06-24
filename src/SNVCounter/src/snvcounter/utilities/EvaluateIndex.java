@@ -10,7 +10,6 @@ public class EvaluateIndex {
 	public static File returnIndex(File vcfFile) {
 		
 		File vcfIndex;
-		
 		File vcfIndexTBI = new File(vcfFile.getAbsolutePath() + ".tbi");
 		File vcfIndexCSI = new File(vcfFile.getAbsolutePath() + ".csi");
 		if (vcfIndexTBI.exists()) {
@@ -27,7 +26,7 @@ public class EvaluateIndex {
 	
 	public static String returnAnnotationPrefix(File vcfFile) {
 				
-		Matcher nameMatcher = Pattern.compile("(\\S+)\\.(vcf|bed)\\.gz").matcher(vcfFile.getAbsolutePath());
+		Matcher nameMatcher = Pattern.compile("(\\S+)\\.(vcf|bed)\\.(bgz|gz)").matcher(vcfFile.getAbsolutePath());
 		String annotationPrefix;
 		
 		if (nameMatcher.matches()) {
