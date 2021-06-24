@@ -6,9 +6,19 @@ use Math::BigFloat ':constant';
 use List::Util qw(product);
 
 open (PLI, "<rawdata/genelists/gnomad.v2.1.1.lof_metrics.by_gene.txt") || die "Cannot open file: $!";
-open (SHET, "<rawdata/genelists/shet.weghorn.hgnc.txt") || die "Cannot open file: $!";
+open (SHET, "<rawdata/genelists/shet.hgnc.txt") || die "Cannot open file: $!";
 open (SHETOLD, "<rawdata/genelists/shet.cassa.hgnc.txt") || die "Cannot open file: $!";
 open (GENELISTS, "<rawdata/genelists/gene_lists.txt") || die "Cannot open file: !";
+
+## Get tissue-specific lists
+opendir my $dir, "rawdata/genelists/tissues/" or die "Cannot open directory: $!";
+my @lists = <GENELISTS>;
+close GENELISTS;
+my @files = grep { /High/ } readdir $dir;
+closedir $dir;
+
+## Make sure all file lists are here:
+push (@lists, @files);
 
 my %pli;
 
@@ -50,17 +60,22 @@ close SHETOLD;
 
 my %geneLists;
 
-foreach (<GENELISTS>) {
+foreach (@lists) {
 
 	chomp $_;
+	
 	if ($_ =~ /(\S+)\.txt/) {
 		my $id = $1;
-		open (LIST, "<$_") || die "Cannot open file: $!";
+		if ($_ =~ /High/) {
+			open (LIST, "<tissues/$_") || die "Cannot open file: $!";
+		} else {
+			open (LIST, "<$_") || die "Cannot open file: $!";
+		}
 		foreach my $gene (<LIST>) {
 
 			chomp $gene;
 			$geneLists{$id}{$gene} = 1;
-						
+			
 		}
 
 		close LIST;
@@ -136,9 +151,13 @@ foreach my $line (<ATTACH>) {
 }
 
 
-my @header = ('chr', 'start', 'end', 'ct', 'genes', 'plis', 'shets', 'product_sHET','old_product_sHET');
+my @header = ('chr', 'start', 'end', 'ct', 'genes', 'plis', 'shets', 'highPLI', 'highsHET', 'product_sHET','product_sHET_old');
 foreach my $list (sort keys %geneLists) {
 	push (@header, "product_sHET_no_" . $list);
+}
+
+if ($ARGV[0] =~ /001/) {
+	print join("\t", @header) . "\n";
 }
 
 printResults(\%dels, "DEL");
