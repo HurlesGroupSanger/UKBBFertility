@@ -23,7 +23,7 @@ public class SNVCounterOptions {
 	private OptionHolder holder;
 	
 	// Is just a holder/parser for command-line options
-	public SNVCounterOptions(String args[]) throws IOException, GeneNotFoundException {
+	public SNVCounterOptions(String args[]) throws IOException, GeneNotFoundException, InterruptedException {
 		
 		Options options = buildOptions();
 		holder = setOptions(args, options);
@@ -60,7 +60,7 @@ public class SNVCounterOptions {
 		
 	}
 	
-	private OptionHolder setOptions (String args[], Options options) throws IOException, GeneNotFoundException {
+	private OptionHolder setOptions (String args[], Options options) throws IOException, GeneNotFoundException, InterruptedException {
 		
 		CommandLineParser parser = new BasicParser();
 		CommandLine cmd = null;
@@ -73,8 +73,8 @@ public class SNVCounterOptions {
 			System.exit(1);
 		}
 	
-		OptionHolder holder = new OptionHolder(cmd.getOptionValue("gene"), 
-				cmd.getOptionValue("genelist"),
+		OptionHolder holder = new OptionHolder(cmd.getOptionValue("genelist"),
+				cmd.getOptionValue("gene"), 
 				cmd.getOptionValue("genomeversion"),
 				cmd.getOptionValue("vcf")
 				);
@@ -105,7 +105,7 @@ public class SNVCounterOptions {
 		private File outputDir;
 		private File rootDir;
 		
-		public OptionHolder(String geneList, String geneString, String genomeVersionString, String vcfFileString) throws IOException, GeneNotFoundException {
+		public OptionHolder(String geneList, String geneString, String genomeVersionString, String vcfFileString) throws IOException, GeneNotFoundException, InterruptedException {
 			
 			setGeneList(geneList);
 			setGeneNumber(geneString);
@@ -167,7 +167,7 @@ public class SNVCounterOptions {
 			
 			File vcfFile = new File(vcfFileString);
 			if (vcfFile.exists()) {
-				if (vcfFile.getName().contains("vcf.gz")) {
+				if (vcfFile.getName().contains("vcf.gz") | vcfFile.getName().contains("vcf.bgz")) {
 					isVcfListFile = false;
 				} else {
 					isVcfListFile = true;
@@ -238,7 +238,7 @@ public class SNVCounterOptions {
 			this.rootDir = rootDir;
 		}
 			
-		public void buildVCFIterator() throws IOException {
+		public void buildVCFIterator() throws IOException, InterruptedException {
 			vcfIterator = new MultiVCFIterator(vcfFile, isVcfListFile, gene);
 		}
 		public MultiVCFIterator getVCFIterator() {

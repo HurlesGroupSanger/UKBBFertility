@@ -58,8 +58,14 @@ run.lm <- function(code, node, sex, variant.type) {
   
   lm.table[,has.disorder:=if_else(eid %in% indv.with.code,1,0)]
   
+  # Set Covariates:
+  covariates <- c("product_sHET","has.disorder","sexPulse","agePulse","agePulse.squared","birth.year.cut",paste0("PC",seq(1,40)), paste0("scaled.rare.PC",seq(1,100)))
+  
+  ## Remove WES individuals from CNV analyses for meta-analysis purposes
   if (variant.type == "DEL") {
-    lm.table <- lm.table[has.wes == F]
+    lm.table <- lm.table[has.wes == 0]
+  } else {
+    covariates <- c(covariates,"has.wes")
   }
   
   if (sex == "MALE") {
@@ -81,7 +87,6 @@ run.lm <- function(code, node, sex, variant.type) {
                 nrow(lm.table[has.disorder == 1 & product_sHET > 0])))
   } else {
   
-    covariates <- c("product_sHET","has.disorder","sexPulse","agePulse","agePulse.squared","PC1","PC2","PC3","PC4","PC5","PC6","PC7","PC8","PC9","PC10","PC11","PC12","PC13","PC14","PC15","PC16","PC17","PC18","PC19","PC20","PC21","PC22","PC23","PC24","PC25","PC26","PC27","PC28","PC29","PC30")
     lm.formula <- as.formula(paste("has.children",paste(covariates,collapse = "+"),sep="~"))
     
     lm.model <- glm(lm.formula, data = lm.table, family = "binomial")

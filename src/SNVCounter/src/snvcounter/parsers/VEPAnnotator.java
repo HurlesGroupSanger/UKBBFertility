@@ -128,8 +128,7 @@ public class VEPAnnotator extends AnnotationParser {
 								isLastIntron = true;
 							}
 						}
-					}
-										
+					}			
 				}
 			}
 		}

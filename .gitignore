@@ -2,6 +2,7 @@
 rawdata_test*/
 rawdata.testing*.tar.gz
 rawdata_real/
+rawdata_realv2/
 
 # or an individuals unpacked rawdata folder:
 rawdata/

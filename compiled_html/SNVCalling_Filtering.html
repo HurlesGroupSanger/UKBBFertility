@@ -382,6 +382,10 @@ summary {
 <li><a href="#a.-preparing-gene-lists">4A. Preparing Gene Lists</a></li>
 <li><a href="#b.-running">4B. Running</a></li>
 </ul></li>
+<li><a href="#postprocessing">5. Postprocessing</a><ul>
+<li><a href="#a.-gene-exclusion-data">5A. Gene Exclusion Data</a></li>
+<li><a href="#b.-run-postprocessing">5B. Run Postprocessing</a></li>
+</ul></li>
 </ul>
 </div>
 
@@ -390,7 +394,6 @@ summary {
 <p>This Markdown documents the annotation and extraction of SNV and InDel variants from UKBB FE WES files. This annotation uses a custom java pipeline, of which the precompiled jar is included at <code>scripts/SNVCounter.jar</code>. The source code and Eclipse project for this pipeline is available in <code>src/SNVCounter/</code>.</p>
 <p>This code makes use of the following tools:</p>
 <ol style="list-style-type: decimal">
-<li>plinkv1.9/2 to extract variants from primary UKBB data: <a href="https://www.cog-genomics.org/plink2" class="uri">https://www.cog-genomics.org/plink2</a></li>
 <li>CADD requires a clone and install of their code repo: <a href="https://github.com/kircherlab/CADD-scripts/" class="uri">https://github.com/kircherlab/CADD-scripts/</a></li>
 <li>VEP requires a clone and install of their code repo: <a href="https://github.com/Ensembl/ensembl-vep" class="uri">https://github.com/Ensembl/ensembl-vep</a>
 <ul>
@@ -408,29 +411,54 @@ summary {
 <p><strong>Note</strong>: The intent of this document is <em>not</em> to be a runnable document like <code>PhenotypeTesting.Rmd</code>, it is instead to offer a guide on how SNV/InDel annotation and curation was performed. We have provided the output of this document to UK Biobank, which you can download at:</p>
 <p><code>https://fake.ukbbiobank_url.com</code></p>
 <p>You can view a compiled html version of this document with all code run either within this repository at <code>compiled_htmls/SNVCalling_Filtering.html</code> or on <a href="https://htmlpreview.github.io/?https://github.com/eugenegardner/UKBBFertility/blob/master/compiled_html/SNVCalling_Filtering.html">github</a>.</p>
+<pre class="r"><code>knitr::opts_chunk$set(
+    echo = TRUE,
+    message = FALSE,
+    warning = FALSE ## Warnings turned off to squelch unecessary ggplot noise in kintted document. Have checked all for accuracy.
+)
+
+## Quietly Load Libraries
+load.package &lt;- function(name) {
+  suppressMessages(suppressWarnings(library(name, quietly = T, warn.conflicts = F, character.only = T)))
+}
+
+load.package(&quot;readxl&quot;) ## Read Supplemental Excel tables
+load.package(&quot;data.table&quot;) ## Better than data.frame
+load.package(&quot;biomaRt&quot;) ## Get gene lists we need
+load.package(&quot;tidyverse&quot;) ## Takes care of ggplot, tidyr, dplyr, and stringr</code></pre>
 </div>
 <div id="required-exome-variant-files" class="section level1">
 <h1>2. Required Exome Variant Files</h1>
-<p>First step to analyse UK Biobank WES data is to actually acquire the variant files themselves. Please see <a href="http://biobank.ndph.ox.ac.uk/showcase/field.cgi?id=23160">this page</a> for additional information on accquiring required files. Please note that conversion to VCF format requires <a href="https://www.cog-genomics.org/plink2">PLINKv1.9 or PLINKv2</a> and <a href="http://www.htslib.org/doc/tabix.html">tabix</a>.</p>
+<p>First step to analyse UK Biobank WES data is to actually acquire the variant files themselves. Please see <a href="https://biobank.ndph.ox.ac.uk/showcase/field.cgi?id=23146">this page</a> for additional information on accquiring required files. All information is stored in population-level pVCF format as provided by UK Biobank.</p>
+<p><strong>Note</strong>: This document makes use of the latest UKBB release (a.k.a. “The 200k”)</p>
 <p><strong>Note</strong>: DO NOT delete the raw files after you download them. VEP annotation requires them to work properly!</p>
 <p>Roughly, files were accquired and processed into a VCF format file with the following commands:</p>
 <pre class="bash"><code>
-## Going to put these files in vcfs/ to make examples in this document consistent:
-mkdir vcfs/
-cd vcfs/
+## Going to put these files in vcfs/individual_vcfs/ to make examples in this document consistent:
+## Note that UK Biobank has stored variants across 977 separate VCFs and you will need to run these commands to download each pVCF
+mkdir -p vcfs/individual_vcfs/
+cd vcfs/individual_vcfs/
 
-## This downloads a set of plink binary format files: ukb_efe_chr1_v1.bed, ukb44165_efe_chr1_v1_s49959.fam, ukb_fe_exm_chrall_v1.bim
+## First download the blocks reference file:
+wget -nd biobank.ndph.ox.ac.uk/showcase/showcase/auxdata/pvcf_blocks.txt
+
+## Then this command downloads ONE pVCF to the folder vcfs/individual_vcfs/. You will need to download the additional 976 files.
 ## Note that you must also have your keyfile provided by UKB pointed to with the -a flag
-ukbgene efe -c1 ## bed file
-ukbgene efe -c1 -m ## fam file
-curl -O biobank.ndph.ox.ac.uk/showcase/showcase/auxdata/ukb_fe_exm_chrall_v1.bim ## bim file
+# -c is the chromosome and -b is the chromosome slice
+gfetch 23156 -ak44165.key -c1 -b0
 
-## This converts downloaded plink files to a VCF format file useable by this code:
-plink --bed ukb_efe_chr1_v1.bed --bim ukb_fe_exm_chrall_v1.bim --fam ukb44165_efe_chr1_v1_s49959.fam --out ukbb_plink --recode vcf
+## You will then need to run the following on each file:
+bcftools index ukb23156_cY_bZ.vcf.gz
+## Where:
+# Y = chromosome
+# Z = block
 
-## And bgzip and index:
-bgzip ukbb_plink.vcf
-tabix -p vcf ukbb_plink.vcf.gz</code></pre>
+## Once all 977 vcf slices are downloaded and indexed, go back up one directory (into vcfs/) and run the following to generate a bed file list of VCF files with a tabix index:
+cd ../ ## Now in vcfs/
+perl -ane 'chomp $_; $loc = $ENV{&quot;PWD&quot;}; print &quot;chr$F[1]\t$F[3]\t$F[4]\t$loc/individual_vcfs/ukb23156_c$F[1]_b$F[2]_v1.vcf.gz\n&quot;;' pvcf_blocks.txt &gt; ukbb_200k.locations.bed
+bgzip ukbb_200k.locations.bed
+tabix -p bed ukbb_200k.locations.bed.gz ## Yes, I know bed is 0-based but I handle that in my subsequent code
+</code></pre>
 </div>
 <div id="generating-annotation-sources" class="section level1">
 <h1>3. Generating Annotation Sources</h1>
@@ -467,6 +495,7 @@ tabix -p vcf ukbb_plink.vcf.gz</code></pre>
 <p><strong>Note</strong>: <em>Many</em> of the below commands will take a long time, either due to long download times or to actual processing time. It is highly recommended to run these with some sort of parallel compute architecture. Nonetheless, all of these commands should be runnable on a local machine.</p>
 <div id="a.-create-required-directory-structure" class="section level2">
 <h2>3A. Create Required Directory Structure</h2>
+<p>Note that the variant-specific directories have a prefix that is similar to the vcf bed file that you made above in section 2. This must be maintained for downstream code to function.</p>
 <pre class="bash"><code>
 ## Make top level directories:
 mkdir -p annotations/hg38/
@@ -478,15 +507,15 @@ mkdir annotations/hg38/mpc/
 mkdir annotations/hg38/pext/
 
 ## Make variant-specific directories:
-mkdir vcfs/ukbb_plink.cadd/
-mkdir vcfs/ukbb_plink.vep/
-mkdir vcfs/ukbb_plink.vqsr/</code></pre>
+mkdir vcfs/ukbb_200k.locations.cadd/
+mkdir vcfs/ukbb_200k.locations.vep/
+mkdir vcfs/ukbb_200k.locations.vqsr/</code></pre>
 </div>
 <div id="b.-variant-agnostic-databases" class="section level2">
 <h2>3B. Variant Agnostic Databases</h2>
 <div id="cadd" class="section level3">
 <h3>CADD</h3>
-<p>Here we download v1.5 of CADD. At the time of generating the data used in this study, this is what was available. As of writing this document, v1.6 has been replaced and should be easy to substitute here (the file formats are the same). There is no necessary postprocessing required for these files. Simply download, ensure the name is consistent with what is below and you are good to go:</p>
+<p>Here we download v1.6 of CADD. At the time of generating the data used in this study, this is what was available. There is no necessary postprocessing required for these files. Simply download, ensure the name is consistent with what is below and you are good to go:</p>
 <pre class="bash"><code>## Go to CADD directory:
 cd annotations/hg38/cadd/
 
@@ -554,7 +583,7 @@ tabix -s 1 -b 2 -e 2 mpc.tsv.gz</code></pre>
 </div>
 <div id="pext" class="section level3">
 <h3>PEXT</h3>
-<p>Obtaining PEXT scores from <a href="https://www.biorxiv.org/content/10.1101/554444v2">Cummings et al.</a>. This manuscript utilized data from GTEx to determine the proportion of transcripts in which a variant is located are actually expressed. Like with MPC, this file does not exist for hg38, and we need to use crossmap to lift it over. The protocol is thus very similar.</p>
+<p>Obtaining PEXT scores from <a href="https://www.nature.com/articles/s41586-020-2329-2">Cummings et al.</a>. This manuscript utilized data from GTEx to determine the proportion of transcripts in which a variant is located are actually expressed. Like with MPC, this file does not exist for hg38, and we need to use crossmap to lift it over. The protocol is thus very similar.</p>
 <pre class="bash"><code>## Go to PEXT directory:
 cd annotations/hg38/pext/
 
@@ -592,71 +621,50 @@ tabix -s 1 -b 2 -e 2 pext.tsv.gz</code></pre>
 </div>
 <div id="c.-variant-specific-databases" class="section level2">
 <h2>3C. Variant Specific Databases</h2>
+<p>For all of the following sections, I have performed the required tasks <em>SPLIT</em> by each VCF that was downloaded in section 2 (977 separate vcf.gz files). I then <code>cat</code> these together to generate a single file as I document below. Each section below concerns the annotation of one of these vcf.gz files, and it is up to the user to decide how to accomplish this task.</p>
 <div id="vqsr" class="section level3">
 <h3>VQSR</h3>
-<p>As UK Biobank provided variants in plink format, VQSR values are not inclued. Due to this code also being needed for other projects, I do annotate VQSR for all variants. However, for UK Biobank calls, we just set a VQSR value of 10 (to make sure all variants pass even lenient filters).</p>
+<p>As UK Biobank provided variants in pseudo-plink VCF format, VQSR values are not inclued. Due to this code also being needed for other projects, I do annotate VQSR for all variants. However, for UK Biobank calls, we just set a VQSR value of 10 (to make sure all variants pass even strict VQSR filters).</p>
 <pre class="bash"><code>## Go to VQSR directory:
-cd vcfs/ukbb_plink.vcf.vqsr/
+cd vcfs/ukbb_200k.locations.vqsr/
 
 ## This is a FAKE file with all 10s for VQSR:
-bcftools query -f &quot;%CHROM\t%POS\t%REF\t%ALT\t%FILTER\t10\n&quot; ../ukbb_plink.vcf.vcf.gz &gt; VQSR.tsv
-sed -i 's_chr__' VQSR.tsv
-bgzip VQSR.tsv
-tabix -s 1 -b 2 -e 2 VQSR.tsv.gz
-</code></pre>
+## The 1_1.tsv is named based on &lt;chr&gt;_&lt;block start coordinate&gt;.tsv. The first vcf.gz file starts at chr1:1, thus the file name
+bcftools norm -m - -Ou ukb23156_c1_b0_v1.vcf.gz | bcftools query -f &quot;%CHROM\t%POS\t%REF\t%ALT\t%FILTER\t10\n&quot; -o 1_1.tsv
+sed -i 's_chr__' 1_1.tsv
+
+## After running the above for all 977 files, we do the following:
+cat *.tsv | sed 's_chr__' | sort -k 1,1 -k2,2n &gt; vqsr.tsv
+bgzip vqsr.tsv
+tabix -s 1 -b 2 -e 2 vqsr.tsv.gz</code></pre>
 </div>
 <div id="cadd-1" class="section level3">
 <h3>CADD</h3>
 <p>As the CADD library files that were created above do not contain most InDel scores, we need to supplement this file with a set of CADD scores for InDels in the primary plink file. This annotation requires a local install of <a href="https://github.com/kircherlab/CADD-scripts/">CADD</a>, the setup of which I do not include in this document.</p>
 <p>As CADD takes a good amount of time, this code is partially parallelized by the script <code>scripts/run_cadd.pl</code>.</p>
-<pre class="bash"><code>## Go to VQSR directory:
-cd vcfs/ukbb_plink.vcf.vqsr/
-
-## Quicker to just pull the InDels out of our pre-processed 'VQSR' file above:
-## This creates a master 'VCF' file of InDels that we need to annotate
-zcat ../ukbb_plink.vqsr/VQSR.tsv.gz | perl -ane 'chomp $_; if (length($F[2]) &gt; 1 || length($F[3]) &gt; 1) {print &quot;$F[0]\t$F[1]\t.\t$F[2]\t$F[3]\n&quot;;}' &gt; to_annotate.vcf
-
-## Just use split to create a set of files each with 1,000 lines that we can parellelize:
-# For UKBB, this made a total of 765 files, but could change in the future
-split -a 4 -l 1000 -d --numeric-suffixes=1 to_annotate.vcf to_annotate.
-
-## Have to rename our files so CADD will like them
-perl -e 'for (1..765) {$x = sprintf(&quot;%04d&quot;, $_); print &quot;mv to_annotate.$x to_annotate.$x.vcf;\n&quot;;}' | bash
+<pre class="bash"><code>## Go to CADD directory:
+cd vcfs/ukbb_200k.locations.cadd/
 
 ## This is provided for example, but CADD recommends an install via conda.
 ## Make sure you have it/activate it prior to running CADD via the provided script
-conda activate cadd-env-1.5
+conda activate cadd-env-1.6
 
-## Run CADD
-# Standard example, where the only input is the chunk we want to run, in this case a number from 1-765
-scripts/run_cadd.pl &lt;1-765&gt;
-# Example for LFS Submission
-bsub -q normal -M 3000 -o CADD.%I.%J -J 'CADD[1-999]' './run_cadd.pl 1'
+## Run CADD -- I have provided an example script of how I did this at scripts/run_cadd.pl. Please see that for how this was done:
+./run_cadd.pl
 
-## Mash everything together:
-perl -e '@F; for (1..765) {$x = sprintf(&quot;%04d&quot;,$_); push(@F, &quot;to_annotate.$x.tsv.gz&quot;);} print &quot;zcat &quot; . join(&quot;\t&quot;, @F) . &quot;\n&quot;;' | bash | grep -v &quot;#&quot; &gt; cadd.tsv
-
-## Sort, bgzip, and index
-sort -k 1,1 -k2,2n cadd.tsv &gt; cadd.sorted.tsv
-mv cadd.sorted.tsv cadd.tsv 
+## This will generate 977 files with the suffix *.processed.tsv which we then merge together to get our final annotation file:
+cat *.processed.tsv | sort -k 1,1 -k2,2n &gt; cadd.tsv
 bgzip cadd.tsv
 tabix -s 1 -b 2 -e 2 cadd.tsv.gz</code></pre>
 </div>
 <div id="vep" class="section level3">
 <h3>VEP</h3>
-<p>For VEP, we use a build of v97, which can be obtained from github with the following commands:</p>
+<p>For VEP, we use a build of v102, which can be obtained from github with the following commands:</p>
 <pre><code>git clone https://github.com/Ensembl/ensembl-vep.git
 cd ensembl-vep/
-git checkout release/97</code></pre>
-<p>New-ish builds should be OK, but have not been tested. VEP has to be run differently for each genome build (due to differences b/w the VEP cache/LOFTEE for each genome build). This is mostly handled by the provided script <code>scripts/make_chr_sites.pl</code>.</p>
-<p><strong>Big Note</strong>: This paths within this script MUST be edited to fit any local VEP build.</p>
-<p>I run VEP annotation in 322 chunks (dictated by bedtools makewindows), but the important part is the actual command run by <code>make_chr_sites.pl</code> to ensure formating is consistent with the downstream code.</p>
-<p>This script requires:</p>
-<ol style="list-style-type: decimal">
-<li>VEP</li>
-<li>bcftools &amp; the bcftools plugin split-vep</li>
-<li>plink</li>
-</ol>
+git checkout release/102</code></pre>
+<p>New-ish builds should be OK, but have not been tested. I run VEP annotation in 977 chunks (dictated by the number of individual VCF chunks). One needs to make a “stripped” vcf.gz file for each of the VCF files downloaded from UK Biobank as running VEP through a vcf with genotypes takes A LONG time. I also make use of the bcftools plugin <a href="https://samtools.github.io/bcftools/howtos/plugin.split-vep.html">+split-vep</a> which is VERY helpful!</p>
+<p>This code is also run with help from the script <code>scripts/process_vep.pl</code> – see below.</p>
 <p>A <strong>Note</strong> on LOFTEE:</p>
 <p>The most complicated part of getting VEP to work was building loftee for GRCh38. Ensure you have a plugins dir for VEP as described <a href="https://www.ensembl.org/info/docs/tools/vep/script/vep_plugins.html">here</a>. Some tips when doing this:</p>
 <ol style="list-style-type: decimal">
@@ -670,23 +678,39 @@ git checkout release/97</code></pre>
 <li>For loftee Hg38 to run, it needs additional perl packages, most of which can easily be installed easily via cpan (not going to list here). The only one that was an issue was Bio::DB::BigWig, which has a whole custom setup to follow. I fixed this by installing an older version of the “Kent” UCSC repo <a href="https://github.com/ucscGenomeBrowser/kent/tree/v334_branch">v334</a> as referenced in <a href="https://github.com/GMOD/GBrowse-Adaptors/issues/17">this issue</a>. This also requires you to edit a file when installing kent as noted in the same issue.</li>
 </ol>
 <pre class="bash"><code>
-## Go to Vep directory
-cd vcfs/ukbb_plink.vep/
+## Go to VEP directory
+cd vcfs/ukbb_200k.locations.vep/
 
-# Generate FAI of first 24 chromosomes and chunks to run:
-# This _should_ generate a file 322 lines long
-head -24 /path/to/Homo_sapiens.GRCh38_15.fa.fai &gt; GRCh38.fai
-bedtools makewindows -g GRCh38.fai -w 10000000 &gt; chunks.bed
+## The actual VEP command (DO NOT USE without editing for your own vep build)
+vep \
+--cache \
+--dir_cache .vep/ \
+--fasta .vep/homo_sapiens/102_GRCh38/Homo_sapiens.GRCh38.dna.toplevel.fa.gz \
+--offline \
+--format vcf \
+--dir_plugins .vep/Plugins \
+-i  ukb23156_c1_b0_v1.stripped.vcf.gz\
+--plugin SpliceRegion,Extended \
+--plugin GeneSplicer,.vep/Plugins/GeneSplicer/bin/linux/genesplicer,.vep/Plugins/GeneSplicer/human \
+--plugin UTRannotator,.vep/Plugins/uORF_starts_ends_GRCh38_PUBLIC.txt \
+--plugin CADD,whole_genome_SNVs.tsv.gz,gnomad.genomes.r3.0.indel.tsv.gz \
+--fork 4 \
+--everything \
+--plugin LoF,loftee_path:.vep/Plugins,human_ancestor_fa:.vep/Plugins/GRCh38_human_ancestor.fa.gz,conservation_file:.vep/Plugins/loftee.sql,gerp_bigwig:.vep/Plugins/gerp_conservation_scores.homo_sapiens.GRCh38.bw \
+--plugin REVEL,.vep/Plugins/grch38_tabbed_revel.tsv.gz \
+--plugin SpliceAI,snv=spliceai_scores.raw.snv.hg38.vcf.gz,indel=spliceai_scores.raw.indel.hg38.vcf.gz \
+--vcf \
+-o ukb23156_c1_b0_v1.vep.vcf.gz \
+--compress_output bgzip \
+--allele_number \
+--verbose \
+--force
 
-# Actually run vep:
-# This takes as input the line in the chunks.bed file that you want to annotate so it is parallelizable:
-# So provide a number between 1 and 322 on the command line to annotate that particular chunk
-./make_chr_sites.pl &lt;1-322&gt;
+## I then do post-processing on each of these files with the bcftools plugin '+split-vep' via the script process_vep.pl
+./process_vep.pl ukb23156_c1_b0_v1.vep.vcf.gz 1_1.vep.sites.tsv
 
-# Note - 12 of these chunks will generate an error when running plink which states: &quot;All variants excluded&quot;. This is because these chunks contain ONLY heterochromatin and thus no variants. This error can be ignored. Other chunks may err out so make sure to check these!
-# Had to write a custom script that uses the &quot;chunks.bed&quot; file to properly concatenate the chunks in order:
-./cat.pl &gt; vep.tsv
-sed -i 's_chr__' vep.tsv
+## And then once all files are processed, put them all together:
+cat *.sites.tsv | sort -k 1,1 -k 2,2n &gt; vep.tsv
 bgzip vep.tsv
 tabix -s 1 -b 2 -e 2 vep.tsv.gz</code></pre>
 </div>
@@ -707,17 +731,7 @@ tabix -s 1 -b 2 -e 2 vep.tsv.gz</code></pre>
 <p><strong>Note</strong>: These scripts assume you have <code>curl</code> installed on your system, which <em>should</em> be true if you are using macos and most *nix systems. Please change the scripts below if this is not the case.</p>
 <div id="download-resources-from-biomart" class="section level3">
 <h3>Download Resources from BioMart</h3>
-<pre class="r"><code>## Load packages silently
-load.package &lt;- function(name) {
-  suppressMessages(suppressWarnings(library(name, quietly = T, warn.conflicts = F, character.only = T)))
-}
-
-## First and only place code is generated
-load.package(&quot;biomaRt&quot;)
-load.package(&quot;data.table&quot;)
-load.package(&quot;tidyverse&quot;)
-
-## Hg19
+<pre class="r"><code>## Hg19
 ensembl &lt;- useMart(&quot;ensembl&quot;, host=&quot;http://grch37.ensembl.org&quot;, dataset = &quot;hsapiens_gene_ensembl&quot;)
 hg19.table &lt;- data.table(getBM(attributes = c('ensembl_gene_id','chromosome_name','start_position','end_position','hgnc_id','hgnc_symbol','ensembl_transcript_id'),mart = ensembl))
 hg19.table &lt;- hg19.table[!grep(&quot;_&quot;,chromosome_name)]
@@ -736,9 +750,11 @@ rm(hg19.table,hg38.table,ensembl)</code></pre>
 <h3>s<sub>het</sub> Gene Lists</h3>
 <pre class="bash"><code>
 perl -ane 'chomp $_; @F = split(&quot;\t&quot;, $_); print &quot;$F[0]\t$F[7]\n&quot;;' rawdata/genelists/shet.weghorn.txt &gt; rawdata/genelists/shet.processed.weghorn.txt
+perl -ane 'chomp $_; @F = split(&quot;\t&quot;, $_); print &quot;$F[0]\t$F[1]\n&quot;;' rawdata/genelists/shet.cassa.txt &gt; rawdata/genelists/shet.processed.cassa.txt
 
 ## sHET gene lists (have to attach ENSG):
-scripts/matcher.pl -file1 rawdata/genelists/hg19.genes.txt -col1 5 -file2 rawdata/genelists/shet.processed.weghorn.txt -r | perl -ane 'chomp $_; print &quot;$F[2]\t$F[0]\t$F[1]\t$F[6]\n&quot;;' &gt; rawdata/genelists/shet.hgnc.txt</code></pre>
+scripts/matcher.pl -file1 rawdata/genelists/hg19.genes.txt -col1 5 -file2 rawdata/genelists/shet.processed.weghorn.txt -r | perl -ane 'chomp $_; print &quot;$F[2]\t$F[0]\t$F[1]\t$F[6]\n&quot;;' &gt; rawdata/genelists/shet.hgnc.txt
+scripts/matcher.pl -file1 rawdata/genelists/hg19.genes.txt -col1 5 -file2 rawdata/genelists/shet.processed.cassa.txt -r | perl -ane 'chomp $_; print &quot;$F[2]\t$F[0]\t$F[1]\t$F[6]\n&quot;;' &gt; rawdata/genelists/shet.cassa.hgnc.txt</code></pre>
 </div>
 <div id="hg19-gene-lists" class="section level3">
 <h3>Hg19 Gene Lists</h3>
@@ -759,19 +775,14 @@ scripts/matcher.pl -file1 rawdata/genelists/hg19.genes.txt -file2 rawdata/geneli
 mv rawdata/genelists/hg19.all_genes_with_pli.2.txt rawdata/genelists/hg19.all_genes_with_pli.txt
 
 # sHET file:
-scripts/matcher.pl -file1 rawdata/genelists/hg19.genes.txt -file2 rawdata/genelists/shet.hgnc.txt -r | perl -ne 'chomp $_;  @F = split(&quot;\t&quot;, $_); print &quot;$F[0]\t$F[5]\t$F[6]\t$F[7]\t$F[8]\t$F[9]\t$F[10]\t$F[2]\n&quot;;' &gt; rawdata/genelists/hg19.all_genes_with_shet.txt
-
-# Make a list of all genes and their coordinates for WES annotation:
-perl -ane 'splice(@F, -2); print join(&quot;\t&quot;, @F) . &quot;\n&quot;;' rawdata/genelists/hg19.all_genes_with_shet.txt &gt; rawdata/genelists/hg19.coordinates.txt
-perl -ane 'splice(@F, -2); print join(&quot;\t&quot;, @F) . &quot;\n&quot;;' rawdata/genelists/hg19.all_genes_with_pli.txt &gt;&gt; rawdata/genelists/hg19.coordinates.txt
-sort rawdata/genelists/hg19.coordinates.txt | uniq &gt; rawdata/genelists/hg19.coordinates.2.txt
-mv rawdata/genelists/hg19.coordinates.2.txt rawdata/genelists/hg19.coordinates.txt</code></pre>
+scripts/matcher.pl -file1 rawdata/genelists/hg19.genes.txt -file2 rawdata/genelists/shet.hgnc.txt -r | perl -ne 'chomp $_;  @F = split(&quot;\t&quot;, $_); print &quot;$F[0]\t$F[5]\t$F[6]\t$F[7]\t$F[8]\t$F[9]\t$F[10]\t$F[2]\n&quot;;' &gt; rawdata/genelists/hg19.all_genes_with_shet.txt</code></pre>
 <pre><code>##   % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current
 ##                                  Dload  Upload   Total   Spent    Left  Speed
 ## 
   0     0    0     0    0     0      0      0 --:--:-- --:--:-- --:--:--     0
-  8 4501k    8  380k    0     0   553k      0  0:00:08 --:--:--  0:00:08  553k
-100 4501k  100 4501k    0     0  2806k      0  0:00:01  0:00:01 --:--:-- 2806k</code></pre>
+  5 4501k    5  226k    0     0   724k      0  0:00:06 --:--:--  0:00:06  722k
+ 83 4501k   83 3744k    0     0  2834k      0  0:00:01  0:00:01 --:--:-- 2834k
+100 4501k  100 4501k    0     0  3028k      0  0:00:01  0:00:01 --:--:-- 3027k</code></pre>
 </div>
 <div id="hg38-gene-lists" class="section level3">
 <h3>Hg38 Gene Lists</h3>
@@ -792,13 +803,7 @@ scripts/matcher.pl -file1 rawdata/genelists/hg38.hgnc.matched.txt -col1 6 -file2
 perl -ne 'chomp $_; @F = split(&quot;\t&quot;, $_); print &quot;$F[0]\t$F[6]\n&quot;;' rawdata/genelists/hg38.all_genes_with_pli.txt &gt; rawdata/genelists/hg38_to_hg19_ENSG.txt
 perl -ne 'chomp $_; @F = split(&quot;\t&quot;, $_); print &quot;$F[0]\t$F[6]\n&quot;;' rawdata/genelists/hg38.all_genes_with_shet.txt &gt;&gt; rawdata/genelists/hg38_to_hg19_ENSG.txt
 sort rawdata/genelists/hg38_to_hg19_ENSG.txt | uniq &gt; rawdata/genelists/hg38_to_hg19_ENSG.2.txt
-mv rawdata/genelists/hg38_to_hg19_ENSG.2.txt rawdata/genelists/hg38_to_hg19_ENSG.txt 
-
-# Make a list of all genes and their coordinates for WES annotation:
-perl -ane 'splice(@F, -2); print join(&quot;\t&quot;, @F) . &quot;\n&quot;;' rawdata/genelists/hg38.all_genes_with_shet.txt &gt; rawdata/genelists/hg38.coordinates.txt
-perl -ane 'splice(@F, -2); print join(&quot;\t&quot;, @F) . &quot;\n&quot;;' rawdata/genelists/hg38.all_genes_with_pli.txt &gt;&gt; rawdata/genelists/hg38.coordinates.txt
-sort rawdata/genelists/hg38.coordinates.txt | uniq &gt; rawdata/genelists/hg38.coordinates.2.txt
-mv rawdata/genelists/hg38.coordinates.2.txt rawdata/genelists/hg38.coordinates.txt</code></pre>
+mv rawdata/genelists/hg38_to_hg19_ENSG.2.txt rawdata/genelists/hg38_to_hg19_ENSG.txt </code></pre>
 </div>
 </div>
 <div id="b.-running" class="section level2">
@@ -812,30 +817,220 @@ mv rawdata/genelists/hg38.coordinates.2.txt rawdata/genelists/hg38.coordinates.t
 <li>Tells which annotation set to use at <code>annotations/hg**/</code></li>
 <li>Also is a hacky way that I handle the ‘chr’ prefix for chromosome IDs typical of hg38 VCFs. I currently don’t have a way to deal with hg38 VCFs that don’t use ‘chr’ and, for hg19, vice versa.</li>
 </ul></li>
-<li>vcf: path to the UK Biobank VCF we downloaded above, with annotations at the correct locus</li>
+<li>vcf: path to the UK Biobank VCF we downloaded above, with annotations at the correct locus. For the 200k data this is the <em>.BED FILE</em> that has coordinates attached to each vcf chunk. This can also be a single vcf file if you choose to run it this way.
+<ul>
+<li>The java code provided knows to use this bed file to find the vcf slice that contains variants for the gene given by <code>-gene</code></li>
+</ul></li>
 <li>samples: list of samples to include in annotations, with one ID per line.
 <ul>
-<li>This is simply the output of <code>bcftools query -l ukbb_plink.vcf.gz</code></li>
-<li>Sample IDs must match identically to those found in the header. UKBiobank WES VCF IDs look like “123456_123456”, where 123456 is the eid of the individual.</li>
+<li>This is simply the output of <code>bcftools query -l ukb23156_c1_b1.vcf.gz</code>, where the vcf file used can be ANY of the VCF chunks acquired from UKBiobank</li>
+<li>Sample IDs must match identically to those found in the header. UKBiobank WES VCF IDs look like “123456”, where 123456 is the eid of the individual.</li>
 <li>This is important to get correct, as this is how both AF is calculated and how individuals are included in the final output.</li>
 </ul></li>
-<li>maf: maf filter to apply to variants. This <em>only</em> filters based on the variants in the VCF file, not provided gnomAD MAFs. Can set higher, but will generate a <em>very</em> large file.</li>
+<li>maf: maf filter to apply to variants. This <em>only</em> filters based on the variants in the VCF file, not provided gnomAD MAFs. Can set higher, but could generate a <em>very</em> large file. For this project we filter on MAF &gt; 1e-3.</li>
 <li>outdir: Where to store per-gene txt files like: <code>results_ukbb_wes/ENSG00000003056.rare_variants.tsv</code></li>
 <li>rootdir: Where are annotations we created above stored?</li>
 </ul>
 <p>This command is intended to be parallelized, and each job will essentially annotated 1 gene at a time within the file given to <code>-genelist</code>. In the below code chunk I have given the raw command to run the first gene in this file, with an example LSF submission for parallelization given below.</p>
-<p>The final result of this code chunk is what is provided as input to the PhenotypeTesting.Rmd document.</p>
 <pre class="bash"><code>
 ## Example to run one gene.
-java -XX:+UseSerialGC -Xms2400M -Xmx2400M -jar /nfs/ddd0/eg15/SNVCounter.jar -genelist rawdata/genelists/hg38.coordinates.txt -gene 1 -genomeversion hg38 -vcf vcfs/ukbb_plink.vcf.gz -samples ukbb_ids.txt -maf 0.001 -outdir results_ukbb_wes/ -rootdir annotations/
-
-java -XX:+UseSerialGC -Xms2400M -Xmx2400M -jar /nfs/ddd0/eg15/SNVCounter.jar -genelist hg38.coordinates.txt -gene 1 -genomeversion hg38 -vcf vcfs/ukbb_plink.vcf.gz -samples ukbb_ids.txt -maf 0.001 -outdir results_ukbb_wes/ -rootdir annotations/
+java -XX:+UseSerialGC -Xms2400M -Xmx2400M -jar /nfs/ddd0/eg15/SNVCounter.jar -genelist annotations/hg38/genelists/hg38.coordinates.txt -gene 1 -genomeversion hg38 -vcf vcfs/ukbb_200k.locations.bed.gz -samples ukbb_ids.200k.txt -maf 0.001 -outdir results_ukbb_wes_200k/ -rootdir annotations/
 
 ## Example job submission command for LSF:
-bsub -q normal -M 2500 -o count.%J.%I -J 'SNV[1-18756]%1000' &quot;java -XX:+UseSerialGC -Xms2400M -Xmx2400M -jar /nfs/ddd0/eg15/SNVCounter.jar -genelist annotations/hg38/genelists/hg38.coordinates.txt -gene \$LSB_JOBINDEX -genomeversion hg38 -vcf vcfs/ukbb_plink.vcf.gz -samples ukbb_ids.txt -maf 0.001 -outdir results_ukbb_wes/ -rootdir annotations/&quot;
+bsub -q normal -M 4000 -o gridout/count.%J.%I -J 'SNV[1-18791]%1000' &quot;java -XX:+UseSerialGC -Djava.io.tmpdir=/lustre/scratch115/teams/hurles/users/eg15/INTERVAL/snv_cognition/tmp/ -Xms4000M -Xmx4000M -jar /nfs/users/nfs_e/eg15/SNVCounter.jar -genelist annotations/hg38/genelists/hg38.coordinates.txt -gene \$LSB_JOBINDEX -genomeversion hg38 -vcf vcfs/ukbb_200k.locations.bed.gz -samples ukbb_ids.200k.txt -maf 0.001 -outdir results_ukbb_wes_200k/ -rootdir annotations/&quot;
 
 ## Mash the genes together:
-grep -hv 'NONE' results_ukbb_wes_revised/*.rare_variants.tsv &gt; counts.ukbb_wes.txt</code></pre>
+grep -hv 'NONE' results_ukbb_wes_200k/*.rare_variants.tsv &gt; counts.ukbb_wes.200k.txt</code></pre>
+</div>
+</div>
+<div id="postprocessing" class="section level1">
+<h1>5. Postprocessing</h1>
+<p>Due to the large amount of data, we can no longer load the above ‘counts.ukbb_wes.200k.txt’ directly into a local version of RStudio and process it here with the script <code>scripts/process_snvs.200k.r</code>. This script calculates both regular s<sub>het</sub> scores and s<sub>het</sub> scores that exclude specific genes for use in <code>PhenotypeTesting.Rmd</code>. It requires ~20Gb of memory in order to run.</p>
+<div id="a.-gene-exclusion-data" class="section level2">
+<h2>5A. Gene Exclusion Data</h2>
+<p>Each of these sections downloads some “exclusion” list that we then use to generate a modified s<sub>het</sub> for a specific analysis we do in <code>PhenotypeTesting.Rmd</code>.</p>
+<div id="expression-based-exclusion" class="section level3">
+<h3>Expression-Based Exclusion</h3>
+<p>This code just quickly downloads GTEx expression data (v7) from the <a href="https://gtexportal.org/home/datasets">GTEx Consortium</a> and loads it into R.</p>
+<pre class="bash"><code>
+curl -o rawdata/genelists/GTEx_Analysis_2016-01-15_v7_RNASeQCv1.1.8_gene_median_tpm.gct.gz https://storage.googleapis.com/gtex_analysis_v7/rna_seq_data/GTEx_Analysis_2016-01-15_v7_RNASeQCv1.1.8_gene_median_tpm.gct.gz
+gunzip -f rawdata/genelists/GTEx_Analysis_2016-01-15_v7_RNASeQCv1.1.8_gene_median_tpm.gct.gz
+</code></pre>
+<pre><code>##   % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current
+##                                  Dload  Upload   Total   Spent    Left  Speed
+## 
+  0     0    0     0    0     0      0      0 --:--:-- --:--:-- --:--:--     0
+  0     0    0     0    0     0      0      0 --:--:-- --:--:-- --:--:--     0
+ 68 4835k   68 3296k    0     0  3028k      0  0:00:01  0:00:01 --:--:-- 3026k
+100 4835k  100 4835k    0     0  3249k      0  0:00:01  0:00:01 --:--:-- 3249k</code></pre>
+<p>We then load it into memory here.</p>
+<pre class="r"><code>## GTEX expression data:
+expression &lt;- fread(&quot;rawdata/genelists/GTEx_Analysis_2016-01-15_v7_RNASeQCv1.1.8_gene_median_tpm.gct&quot;)
+expression[,c(&quot;gene&quot;,&quot;vers&quot;):=tstrsplit(gene_id,&quot;.&quot;,fixed=T),by=1:nrow(expression)]
+setnames(expression,&quot;gene&quot;,&quot;hg19.GENE&quot;)
+
+## Load sHET Genes:
+shet.genes &lt;- fread(&quot;rawdata/genelists/shet.hgnc.txt&quot;)
+setnames(shet.genes,names(shet.genes),c(&quot;hg19.GENE&quot;,&quot;GENE&quot;,&quot;sHET.val&quot;,&quot;HGNC.ID&quot;))
+shet.genes[,deciles:=cut(sHET.val,breaks=quantile(sHET.val,seq(0,1,by=0.1)),include.lowest = T)]
+shet.genes[,sHET.val.binary:=cut(sHET.val,breaks=c(0,0.15,1),labels = c(&quot;lt_015&quot;,&quot;gt_015&quot;),right = F)]
+
+## Only retain genes with an sHET score:
+expression &lt;- merge(expression, shet.genes[,&quot;hg19.GENE&quot;], by = &quot;hg19.GENE&quot;)</code></pre>
+<div id="making-gene-lists-for-calculating-shet-burden" class="section level4">
+<h4>Making Gene Lists For Calculating sHET Burden</h4>
+<p>This block generates “expressed gene” lists for the purposes of creating tissue-specific s<sub>het</sub> burdens. These individual files are placed in a subdirectory (<code>tissues/</code>), located within the <code>genelists/</code> directory:</p>
+<pre class="bash"><code>mkdir -p rawdata/genelists/tissues/</code></pre>
+<pre class="r"><code>## Generate highly expressed gene lists for all tissues:
+for (t in names(expression)[3:55]) {
+  
+  t.file &lt;- str_remove_all(t, &quot; &quot;)
+  t.file &lt;- str_replace_all(t.file,&quot;-&quot;,&quot;_&quot;)
+  t.file &lt;- str_replace_all(t.file,&quot;\\(\\S+\\)&quot;,&quot;&quot;)
+  t.file &lt;- str_to_lower(t.file)
+  file &lt;- paste0(&quot;rawdata/genelists/tissues/&quot;,t.file,&quot;High.txt&quot;)
+  fwrite(expression[get(t) &gt; 0.5, &quot;hg19.GENE&quot;], file, quote = F, row.names = F, col.names = F, sep = &quot;\t&quot;)
+
+}</code></pre>
+</div>
+</div>
+<div id="disease-based-exclusion" class="section level3">
+<h3>Disease-Based Exclusion</h3>
+<p>This section of the document is not evaluated, as we need to acquire disease gene resources from three locations. The actual acquisition of these files is trivial, but did not want to attempted to make reproduceable due to potential links breaking. If this section needs to be reproduced, download the resources at the <em>rough</em> following locations and run the code in this section. Otherwise, move to the next section where the file produced by this section has already been generated. Locations to place necessary files and file dates used in the manuscript are listed below:</p>
+<ol style="list-style-type: decimal">
+<li>Clinvar - <a href="https://ftp.ncbi.nlm.nih.gov/pub/clinvar/vcf_GRCh37/archive_2.0/2019/clinvar_20191003.vcf.gz" class="uri">https://ftp.ncbi.nlm.nih.gov/pub/clinvar/vcf_GRCh37/archive_2.0/2019/clinvar_20191003.vcf.gz</a>
+<ul>
+<li><code>rawdata/genelists/clinvar.vcf.gz</code></li>
+<li>date: October 3, 2019</li>
+</ul></li>
+<li>DDG2P - <a href="http://www.ebi.ac.uk/gene2phenotype/downloads/DDG2P.csv.gz" class="uri">http://www.ebi.ac.uk/gene2phenotype/downloads/DDG2P.csv.gz</a>
+<ul>
+<li><code>rawdata/genelists/DDG2P.csv</code></li>
+<li>date: November 12, 2019</li>
+</ul></li>
+<li>OMIM - <a href="https://www.omim.org/downloads" class="uri">https://www.omim.org/downloads</a>
+<ul>
+<li><code>rawdata/genelists/morbidmap.txt</code></li>
+<li>date: October 8, 2019</li>
+</ul></li>
+</ol>
+<p><strong>Note</strong>: To download OMIM morbid map you will need to register and place a copy of this file at: <code>rawdata/genelists/morbidmap.txt</code></p>
+<pre class="r"><code>## Clinvar
+clinvarVCFfiltered &lt;- read_tsv(&quot;rawdata/genelists/clinvar.vcf.gz&quot;, comment = '#', col_names = F, col_types = 'cccccccccccccc') %&gt;% 
+  mutate(PHEN = str_remove(str_extract(X8, 'CLNDN=[^;]*;'), &quot;CLNDN=&quot;)) %&gt;% 
+  mutate(PHEN = str_remove(PHEN, &quot;not_provided&quot;)) %&gt;% 
+  mutate(PHEN = str_remove(PHEN, &quot;|&quot;)) %&gt;%
+  mutate(PHEN = str_remove(PHEN, &quot;;&quot;)) %&gt;%
+  filter(PHEN != '') %&gt;% 
+  mutate(GENE = str_remove(str_extract(X8, 'GENEINFO=[^;]*:'), &quot;GENEINFO=&quot;)) %&gt;% 
+  mutate(CLNSIG = str_remove(str_extract(X8, 'CLNSIG=[^;]*;'), &quot;CLNSIG=&quot;)) %&gt;% 
+  filter(CLNSIG %in% c(&quot;Pathogenic/Likely_pathogenic;&quot;, &quot;Pathogenic;&quot;, &quot;Likely_pathogenic;&quot;)) %&gt;% 
+  mutate(CLNSIG = str_remove(CLNSIG, &quot;;&quot;)) %&gt;% 
+  mutate(ID = X3) %&gt;% 
+  select(c(X1,X2,ID, PHEN, GENE, CLNSIG)) %&gt;% 
+  drop_na(PHEN, GENE) 
+clinvarGenes &lt;- clinvarVCFfiltered %&gt;% 
+  select(GENE) %&gt;% 
+  distinct() %&gt;% 
+  transform(GENE = strsplit(GENE, &quot;\\|&quot;)) %&gt;%
+  unnest(GENE) %&gt;% 
+  mutate(GENE = gsub(&quot;:.*&quot;, &quot;&quot;, GENE))
+clinvarGenes &lt;- data.table(clinvarGenes)
+
+## DDG2P
+ddg2p &lt;- fread(&quot;rawdata/genelists/DDG2P.csv&quot;) %&gt;% 
+  rename(hgnc_id = `hgnc id`)
+develGenes &lt;- ddg2p %&gt;% 
+  filter(`DDD category` %in% c(&quot;probable&quot;,&quot;confirmed&quot;,&quot;both DD and IF&quot;)) %&gt;% 
+  distinct(`hgnc_id`)
+develGenes &lt;- data.table(develGenes)
+
+## OMIM
+omimGenes &lt;- read_tsv(&quot;rawdata/genelists/morbidmap.txt&quot;, skip = 4, comment = '#', col_types = 'ccic',
+                      col_names = c(&quot;Pheno&quot;, &quot;Gene&quot;, &quot;MIM_Number&quot;, &quot;Cyto_Location&quot;)) %&gt;%
+  select(Pheno, Gene) %&gt;%
+  drop_na() %&gt;%
+  mutate(Gene = gsub(&quot;,.*&quot;, &quot;&quot;, Gene)) %&gt;%
+  mutate(omim_nondisease = ifelse(grepl(&quot;\\[&quot;, Pheno), T,F)) %&gt;%
+  mutate(omim_complex = ifelse(grepl(&quot;\\{&quot;, Pheno), T,F)) %&gt;%
+  mutate(omim_provisional = ifelse(grepl(&quot;\\?&quot;, Pheno), T,F))
+omimGenes &lt;- omimGenes %&gt;% 
+  filter(!omim_complex &amp; !omim_nondisease)
+omimGenes &lt;- data.table(omimGenes)
+
+hgnc.to.ENSG &lt;- fread(&quot;rawdata/genelists/hg19.coordinates.txt&quot;,fill=T)
+setnames(hgnc.to.ENSG,names(hgnc.to.ENSG),c(&quot;hg19.GENE&quot;,&quot;chr&quot;,&quot;start&quot;,&quot;end&quot;,&quot;hgnc_id&quot;,&quot;hgnc.symbol&quot;))
+
+clinvarGenes &lt;- unique(merge(clinvarGenes,hgnc.to.ENSG,by.x=&quot;GENE&quot;,by.y=&quot;hgnc.symbol&quot;))
+develGenes &lt;- unique(merge(develGenes,hgnc.to.ENSG,by=&quot;hgnc_id&quot;))
+omimGenes &lt;- unique(merge(omimGenes[,c(&quot;Gene&quot;)],hgnc.to.ENSG,by.x=&quot;Gene&quot;,by.y=&quot;hgnc.symbol&quot;))
+
+diseaseGenes &lt;- bind_rows(clinvarGenes[,c(&quot;hg19.GENE&quot;)],develGenes[,c(&quot;hg19.GENE&quot;)],omimGenes[,c(&quot;hg19.GENE&quot;)])
+diseaseGenes &lt;- unique(diseaseGenes)
+
+write.table(diseaseGenes, &quot;rawdata/genelists/diseaseGenes.txt&quot;,col.names = F, row.names = F, quote = F, sep =&quot;\t&quot;)
+
+rm(ddg2p, develGenes, omimGenes, clinvarVCFfiltered, clinvarGenes, hgnc.to.ENSG, diseaseGenes)</code></pre>
+</div>
+<div id="male-infertility-based-exclusion" class="section level3">
+<h3>Male Infertility-Based Exclusion</h3>
+<p>This is a list of genes confirmed as playing a role in male infertility from <a href="https://academic.oup.com/humrep/article/34/5/932/5377831">Manon Oud and Joris Veltman</a>. We download and process the data direct from thier supplement (Table S3-S6):</p>
+<p><strong>Note</strong>: I have no idea if the link below will work for everyone. If it doesn’t, download “Supplementary Table 3-6” manually from <a href="https://academic.oup.com/humrep/article/34/5/932/5377831#supplementary-data">here</a> and set the name of the file to <code>rawdata/genelists/male_infertility_genes.xlsx</code></p>
+<pre class="bash"><code>
+curl -L -o rawdata/genelists/male_infertility_genes.xlsx &quot;https://oup.silverchair-cdn.com/oup/backfile/Content_public/Journal/humrep/34/5/10.1093_humrep_dez022/2/dez022_supplementary_tables_siii_-_svi_final.xlsx?Expires=1610104943&amp;Signature=aNNfVC~2fDVGJtkTwMipconDNKJ-wBpIAuirlY9Vlb10rdiEhGSlRiV2w01eiRwPdg~c7N6j~5Vvle-XbWzPs8hrNnDJkTZSzTJSzAY8rJJcGsvQrrZrmakP87O9iIEuKvsBqCyhLU04osczMLaWVRL7oSX~MmBiPNOgWIOUs7nQodIhFAGf9gyscadyUJ9q3yL5ptybEOcd2VbkeDNuHgRCWuhbE1KB7LQStWbRp6gxXR6JMf8qSHWxknccaxBTdhQ3Pk0bLYL3dxOjr2PYikPlogfO98JF2HgakoJmumx-zJ1wh~4RuB9tJykz3or6FMfOqJLSOiFPF9XVEUJ0zQ__&amp;Key-Pair-Id=APKAIE5G5CRDK6RD3PGA&quot;
+</code></pre>
+<pre class="r"><code>male.genes.xlsx &lt;- data.table(read_xlsx(&quot;rawdata/genelists/male_infertility_genes.xlsx&quot;,sheet = &quot;Supplementary Table SIV&quot;,skip=1))
+male.genes.xlsx &lt;- male.genes.xlsx[4:nrow(male.genes.xlsx)]
+male.genes.xlsx &lt;- male.genes.xlsx[,c(&quot;HGNC gene name&quot;,&quot;Inheritance pattern in human&quot;,&quot;Conclusion&quot;)]
+male.genes.xlsx &lt;- male.genes.xlsx[`HGNC gene name` != &quot;&quot;]
+male.genes.xlsx &lt;- male.genes.xlsx[Conclusion!=&quot;No evidence&quot;]
+male.genes.xlsx &lt;- male.genes.xlsx[`Inheritance pattern in human`!= &quot;XL&quot; &amp; `Inheritance pattern in human` != &quot;YL&quot;]
+
+## Need to rename some genes as they used Hg38 gene IDs:
+male.genes.xlsx[,`HGNC gene name`:=if_else(`HGNC gene name`==&quot;CATSPERE&quot;,&quot;C1orf101&quot;,`HGNC gene name`)]
+male.genes.xlsx[,`HGNC gene name`:=if_else(`HGNC gene name`==&quot;CFAP43&quot;,&quot;WDR96&quot;,`HGNC gene name`)]
+male.genes.xlsx[,`HGNC gene name`:=if_else(`HGNC gene name`==&quot;CFAP44&quot;,&quot;WDR52&quot;,`HGNC gene name`)]
+male.genes.xlsx[,`HGNC gene name`:=if_else(`HGNC gene name`==&quot;CFAP69&quot;,&quot;C7orf63&quot;,`HGNC gene name`)]
+male.genes.xlsx[,`HGNC gene name`:=if_else(`HGNC gene name`==&quot;DNAAF4&quot;,&quot;DYX1C1&quot;,`HGNC gene name`)]
+male.genes.xlsx[,`HGNC gene name`:=if_else(`HGNC gene name`==&quot;DNAAF5&quot;,&quot;HEATR2&quot;,`HGNC gene name`)]
+
+write.table(male.genes.xlsx,&quot;rawdata/genelists/male_infertility_genes.txt&quot;,row.names=F,col.names=F,sep=&quot;\t&quot;,quote=F)
+
+rm(male.genes.xlsx)</code></pre>
+<pre class="bash"><code>
+scripts/matcher.pl -file1 rawdata/genelists/hg19.genes.txt -file2 rawdata/genelists/male_infertility_genes.txt -col1 5 -r | perl -ne 'chomp $_; @F = split(&quot;\t&quot;, $_); splice(@F, 4, 9); print join(&quot;\t&quot;, @F) . &quot;\n&quot;;' &gt; rawdata/genelists/male_infertility_genes.annotated.txt
+</code></pre>
+<pre class="bash"><code>
+scripts/matcher.pl -file1 rawdata/genelists/hg19.genes.txt -file2 rawdata/genelists/mouse_infertility_genes.txt -col1 5 -r | perl -ne 'chomp $_; @F = split(&quot;\t&quot;, $_); splice(@F, 4, 9); print join(&quot;\t&quot;, @F) . &quot;\n&quot;;' &gt; rawdata/genelists/mouse_infertility_genes.annotated.txt
+</code></pre>
+</div>
+</div>
+<div id="b.-run-postprocessing" class="section level2">
+<h2>5B. Run Postprocessing</h2>
+<p>The script <code>scripts/process_snvs.200k.R</code> takes NO inputs, but the following files need to be in the directory that you execute the script from <em>EXCEPT</em> for tissue files, which need to be in <code>./tissues/</code>:</p>
+<ol style="list-style-type: decimal">
+<li>hg38 –&gt; hg19 Gene name translation file: <code>hg38_to_hg19_ENSG.txt</code> (created in section: “Hg38 Gene Lists”)</li>
+<li>s<sub>het</sub> scores file: <code>shet.hgnc.txt</code> (created in section “s<sub>het</sub> Gene Lists”)</li>
+<li>Cassa et al s<sub>het</sub> scores file: <code>shet.cassa.hgnc.txt</code> (created in section “s<sub>het</sub> Gene Lists”)</li>
+<li>pLI gene scores file: <code>hg19.all_genes_with_pli.txt</code> (created in section “Hg19 Gene Lists”)</li>
+<li>Variant counts file: <code>counts.ukbb_wes.200k.txt</code> (created in section “4B. Running”)</li>
+<li>sample ID files: <code>ukbb_ids.200k.txt</code> (created in section “4B. Running”)</li>
+<li>Individuals to keep file: <code>indv_to_keep.txt</code>
+<ul>
+<li>This file is a list of all unrelated, european ancestry individuals that will be included in this study (n ~ 350k). The generation of this file is described at the top of <code>PhenotypeTesting.Rmd</code>.</li>
+</ul></li>
+<li>Disease genes: <code>diseaseGenes.txt</code> (created in section “Disease-Based Exclusion”)</li>
+<li>Male infertility genes: <code>male_infertility_genes.annotated.txt</code> (created in section “Male Infertility-Based Exclusion”)</li>
+<li>Mouse infertility genes: <code>mouse_infertility_genes.annotated.txt</code> (created in section “Male Infertility-Based Exclusion”)</li>
+<li>Tissue-specific lists: in <code>./tissues/</code>, named like <code>stomachHigh.txt</code> (created in section “Expression-Based Exclusion”)</li>
+</ol>
+<p>The script will generate three Rdat formatted outputs that are used as the direct input of <code>PhenotypeTesting.Rmd</code> in section 4D of that document:</p>
+<ol style="list-style-type: decimal">
+<li>200k_counts.rds - Main file of per-individual variant data</li>
+<li>counts.rds - Number of total variants per-person</li>
+<li>genes.rds - Number of total variants per-gene</li>
+</ol>
+<pre class="r"><code>./process_snvs.200k.R</code></pre>
 </div>
 </div>
 

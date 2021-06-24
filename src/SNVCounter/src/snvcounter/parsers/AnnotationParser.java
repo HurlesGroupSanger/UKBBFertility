@@ -63,14 +63,14 @@ public class AnnotationParser implements Closeable {
 			int tabixPos = Integer.parseInt(data[1]);
 			String tabixRef = data[2];
 			String tabixAlt = data[3];
-			
+						
 			try {
 				// Some MPC scores are NA, change to NaN so they can be parsed by my code...
 				if (data[anoteType.getColumnNumber()].equals("NA")) {
 					data[anoteType.getColumnNumber()] = "NaN";
 				}
 				double rawScore = Double.parseDouble(data[anoteType.getColumnNumber()]);
-				
+						
 				// Use this to check if InDel
 				int sizeDiff = Math.abs(alt.length() - ref.length());
 				
