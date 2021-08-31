@@ -56,7 +56,7 @@ This project requires the following packages/dependencies:
     + Apache Commons Math
     + Apache Commons CLI
     + Apache Commons Exec
-    + HTSJDK
+    + [HTSJDK](https://github.com/samtools/htsjdk)
 * Python
     + scipy
     + pandas
